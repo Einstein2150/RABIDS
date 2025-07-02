@@ -26,7 +26,6 @@
 2. **Install Python 3.8+**
    ```bash
    python3 --version
-   # If needed, install Python 3.8 or newer
    ```
 3. **Install dependencies:**
    ```bash
@@ -36,16 +35,19 @@
 4. **Install system dependencies:**
    - Go (for module compilation)
    - Rust (for in-memory loader)
-   - Optional: Docker (for obfuscation)
+   - **Docker** (required for payload obfuscation)
+     - Pull the required Docker image for obfuscation:
+       ```bash
+       docker pull ghcr.io/joaovarelas/obfuscator-llvm-16.0:latest
+       ```
+     - This image is used to obfuscate Rust payloads using LLVM during the build process.
    - On macOS:
      ```bash
      brew install go rust
-     # Docker: https://docs.docker.com/get-docker/
      ```
    - On Linux:
      ```bash
      sudo apt install golang rustc cargo
-     # Docker: https://docs.docker.com/get-docker/
      ```
 
 ---
@@ -67,6 +69,8 @@ python3 main.py
 - `clear` — Clear selected modules
 - `delete` — Remove a module from the chain
 - `exit` — Exit the tool
+
+**For detailed documentation on each command and advanced usage, see the [PWNEXE Wiki](https://github.com/sarwaaaar/PWNEXE/wiki).**
 
 ### Example Workflow
 ```
