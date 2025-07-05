@@ -98,7 +98,7 @@ python3 main.py
 | daemon/filedaemon        | Normal C2 server to receive data                                   |
 | daemon/spider            | Metasploit C2 server (reverse shell/payload delivery)              |
 | daemon/bartmoss          | Ransomware builder                                                 |
-| daemon/chatwipe          | WhatsApp chat extractor - gets first 8 chats from Chrome login    |
+| daemon/chatwipe          | WhatsApp chat extractor   |
 | interfaceplug/blackout   | Screen blackout utility                                            |
 | interfaceplug/suicide    | Block input (DoS)                                                  |
 | quickhack/ping           | Sends back user info to the C2 server                              |
