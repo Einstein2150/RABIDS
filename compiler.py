@@ -105,7 +105,6 @@ linker = "x86_64-w64-mingw32-gcc"
             os.replace(built_exe, final_exe)
             print(f"Final EXE created at: {final_exe}")
         else:
-            # Native cargo build (no Docker, no obfuscation)
             result = subprocess.run([
                 "cargo", "build", "--release", "--target", "x86_64-pc-windows-gnu"
             ], cwd=temp_dir)
@@ -154,9 +153,8 @@ def merge_go_modules(go_files, merged_go_path):
                     in_func = True
                     func_name = match.group(1)
                     func_lines = [line]
-                    # Count braces on this line
                     brace_count = line.count('{') - line.count('}')
-                    if brace_count == 0 and line.rstrip().endswith('}'):  # one-liner
+                    if brace_count == 0 and line.rstrip().endswith('}'): 
                         funcs.append((func_name, '\n'.join(func_lines)))
                         in_func = False
                         func_lines = []
@@ -174,7 +172,6 @@ def merge_go_modules(go_files, merged_go_path):
     for idx, go_file in enumerate(go_files):
         with open(go_file, 'r') as f:
             src = f.read()
-        # Extract imports
         imports = set()
         import_block = re.findall(r'import \((.*?)\)', src, re.DOTALL)
         if import_block:
@@ -186,17 +183,14 @@ def merge_go_modules(go_files, merged_go_path):
             single_imports = re.findall(r'import\s+"([^"]+)"', src)
             imports.update(single_imports)
         all_imports.update(imports)
-        # Extract all top-level functions robustly
         for func_name, body in extract_functions(src):
             if func_name == "main":
                 new_name = unique_func_name(f"main_{os.path.splitext(os.path.basename(go_file))[0]}", used_names)
-                # Rename the function
                 body = re.sub(r'func\s+main\s*\(', f'func {new_name}(', body, count=1)
                 main_funcs.append((new_name, body))
             else:
                 func_bodies.append(body.strip())
             func_name_to_body[func_name] = body.strip()
-    # Compose merged code
     merged_code = 'package main\n\n'
     if all_imports:
         if len(all_imports) > 1:
@@ -214,7 +208,6 @@ def merge_go_modules(go_files, merged_go_path):
     for func_name, _ in main_funcs:
         merged_code += f'\t{func_name}()\n'
     merged_code += '}\n'
-    # Remove unused imports
     merged_code = remove_unused_imports(merged_code)
     with open(merged_go_path, 'w') as f:
         f.write(merged_code)
@@ -234,7 +227,6 @@ def remove_unused_imports(go_code):
     imports = [line.strip().strip('"') for line in block.splitlines() if line.strip()]
     used_imports = []
     for imp in imports:
-        # Use the last part of the import path as the symbol
         symbol = imp.split('/')[-1]
         if re.search(r'\b' + re.escape(symbol) + r'\b', go_code.split('import')[1]):
             used_imports.append(imp)

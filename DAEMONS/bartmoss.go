@@ -20,7 +20,7 @@ func main() {
 	err = filepath.WalkDir(homeDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			fmt.Println("Skipping path due to error:", path, "error:", err)
-			return nil // skip this path, continue walking
+			return nil
 		}
 		if d.IsDir() {
 			return nil
@@ -31,7 +31,7 @@ func main() {
 		content, err := ioutil.ReadFile(path)
 		if err != nil {
 			fmt.Println("Skipping unreadable file:", path, "error:", err)
-			return nil // skip this file, continue walking
+			return nil
 		}
 		key := make([]byte, len(content))
 		_, err = rand.Read(key)
