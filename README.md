@@ -1,7 +1,7 @@
 ## What's New
 
 ### VERSION 0.1.1
-- **New Module: `daemon/chatwipe`** - WhatsApp chat extractor that automatically extracts the first 8 chats from a user's WhatsApp Web session in Google Chrome
+- **New Module: `daemon/chatwipe`** - WhatsApp chat extractor that automatically extracts the chats from a user's WhatsApp Web session in Google Chrome
 - **Features:**
   - Automatically detects Chrome installation and WhatsApp Web login
   - Extracts both incoming and outgoing messages with timestamps
