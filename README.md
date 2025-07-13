@@ -9,7 +9,7 @@
 ---
 
 ## Overview
-**PWNEXE** is a modular Windows malware generation framework. It empowers security researchers and red teamers to rapidly build custom malware payloads by chaining together a variety of modules—such as ransomware, persistence loaders, C2 servers, and more—into a single executable. PWNEXE is designed for advanced adversary simulation, malware research, and authorized red team operations.
+**BLACKWALL** is a modular Windows malware generation framework. It empowers security researchers and red teamers to rapidly build custom malware payloads by chaining together a variety of modules—such as ransomware, persistence loaders, C2 servers, and more—into a single executable. BLACKWALL is designed for advanced adversary simulation, malware research, and authorized red team operations.
 
 > **Warning:** This tool is for educational and authorized security research only. Misuse may be illegal and unethical.
 
@@ -30,8 +30,8 @@
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/sarwaaaar/PWNEXE.git
-   cd PWNEXE
+   git clone https://github.com/sarwaaaar/BLACKWALL.git
+   cd BLACKWALL
    ```
 2. **Install Python 3.8+**
    ```bash
@@ -75,7 +75,7 @@ python3 main.py
 - `delete` — Remove a module from the chain
 - `exit` — Exit the tool
 
-**For detailed documentation on each command and advanced usage, see the [PWNEXE Wiki](https://github.com/sarwaaaar/PWNEXE/wiki).**
+**For detailed documentation on each command and advanced usage, see the [BLACKWALL Wiki](https://github.com/sarwaaaar/BLACKWALL/wiki).**
 
 ### Example Workflow
 ```
@@ -115,7 +115,7 @@ python3 main.py
 
 ## Legal Disclaimer
 
-PWNEXE is intended for educational purposes and authorized security testing only. You must have explicit permission to use this tool against any system or network. The authors and contributors are not responsible for misuse, damage, or legal consequences. Always follow applicable laws and ethical guidelines.
+BLACKWALL is intended for educational purposes and authorized security testing only. You must have explicit permission to use this tool against any system or network. The authors and contributors are not responsible for misuse, damage, or legal consequences. Always follow applicable laws and ethical guidelines.
 
 ---
 
