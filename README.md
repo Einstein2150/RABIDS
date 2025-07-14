@@ -6,8 +6,6 @@
   - Stealthy keylogging triggered by '@' key press
   - Automatic screenshot capture on trigger
   - Hidden file storage in `.alt` folder in Downloads with random filenames
-  - Cross-platform compatibility (macOS, Linux, Windows)
-  - Configurable logging duration (default: 1 minute)
 
 ### VERSION 0.1.1
 - **New Module: `daemon/chatwipe`** - WhatsApp chat extractor that automatically extracts the chats from a user's WhatsApp Web session in Google Chrome
