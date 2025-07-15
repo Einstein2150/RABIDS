@@ -1,5 +1,12 @@
 ## What's New
 
+### VERSION 0.1.3
+- **New Module: `interfaceplug/ripper`** - Clipboard wallet address ripper
+- **Features:**
+  - Monitors clipboard for copied wallet addresses (Bitcoin, Ethereum, BEP-20, Solana)
+  - Automatically replaces detected wallet addresses with user-configurable predefined addresses
+  - Predefined addresses for each chain can be set using the `set` command before build
+
 ### VERSION 0.1.2
 - **New Module: `daemon/alt`** - Advanced keylogger with screenshot capability
 - **Features:**
@@ -109,6 +116,7 @@ python3 main.py
 | daemon/alt               | Advanced keylogger with screenshot capability                      |
 | interfaceplug/blackout   | Screen blackout utility                                            |
 | interfaceplug/suicide    | Block input (DoS)                                                  |
+| interfaceplug/ripper     | Clipboard wallet address ripper (BTC, ETH, BEP-20, SOL)            |
 | quickhack/ping           | Sends back user info to the C2 server                              |
 | quickhack/icepick        | Adds EXE to persistence and adds exclusion to Windows Defender      |
 

