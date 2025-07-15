@@ -12,7 +12,7 @@ MODULES = {
     'daemon/spider': {'desc': 'Metasploit C2 server (reverse shell/payload delivery)'},
     'daemon/bartmoss': {'desc': 'Ransomware builder'},
     'daemon/chatwipe': {'desc': 'WhatsApp chat extractor'},
-    'daemon/alt': {'desc': 'Extract users passwords as they are typed},
+    'daemon/alt': {'desc': 'Extract users passwords as they are typed'},
     'interfaceplug/blackout': {'desc': 'Screen blackout utility'},
     'interfaceplug/suicide': {'desc': 'Block input (DoS)'},
     'quickhack/ping': {'desc': 'Sends back user info to the C2 server'},
