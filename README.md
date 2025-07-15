@@ -6,7 +6,7 @@
   - Monitors clipboard for copied wallet addresses (Bitcoin, Ethereum, BEP-20, Solana)
   - Automatically replaces detected wallet addresses with user-configurable predefined addresses
   - Predefined addresses for each chain can be set using the `set` command before build
-  
+
 ---
 
 ## Overview
@@ -42,46 +42,6 @@
 > build
 ```
 - The final EXE will be saved in the `.LOOT` directory.
-
----
-
-## Available Daemon Modules
-
-- **roadrunner**: Scans and exfiltrates system and network info
-- **hellhound**: Gains persistence and disables Defender protections
-- **gremlin**: Hijacks clipboard crypto addresses
-- **blackice**: Blacks out the screen to disrupt user activity
-- **logicbomb**: Blocks input and triggers DoS on the target
-- **flatline**: Provides a reverse shell for remote access
-- **krash**: Wipes data and crashes the system using ransomware
-- **ghost**: Hides presence and evades detection
-- **razorwire**: Implements defensive countermeasures
-- **overwatch**: Monitors all victims chats
-
-## Module Options
-
-- **roadrunner**
-    - `TARGET_IP`: Target IP address (default: 127.0.0.1)
-    - `TARGET_PORT`: Target port (default: 9000)
-- **hellhound**
-    - `PERSISTENCE`: Enable persistence (default: true)
-    - `DEFENDER_EXCLUDE`: Add Defender exclusion (default: true)
-- **gremlin**
-    - `BTC_ADDRESS`: Bitcoin address
-    - `ETH_ADDRESS`: Ethereum address
-    - `BEP20_ADDRESS`: BEP-20 address
-    - `SOL_ADDRESS`: Solana address
-- **blackice**
-    - `DURATION`: Duration of blackout in seconds (default: 60)
-- **logicbomb**
-    - `BLOCK_INPUT`: Block input (default: true)
-    - `TRIGGER_DELAY`: Delay before trigger in seconds (default: 10)
-- **flatline**
-    - `LHOST`: Local host for reverse connection (default: 0.0.0.0)
-    - `LPORT`: Local port (default: 4444)
-    - `KEY`: Encryption key (default: changeme)
-- **krash**
-    - `NOTE`: Ransom note text
 
 ---
 
