@@ -31,7 +31,7 @@
 - `delete` — Remove a module from the chain
 - `exit` — Exit the tool
 
-**For detailed documentation on each command and advanced usage, see the [RABIDS Wiki](https://github.com/sarwaaaar/RABIDS/wiki).**
+**For detailed documentation on each command and advanced usage, see the [RABIDS Wiki](https://github.com/505sarwarerror/RABIDS/wiki).**
 
 ### Example Workflow
 ```
