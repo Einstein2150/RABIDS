@@ -370,7 +370,7 @@ class RABIDSGUI(QMainWindow):
         docs_text.setFont(subtitle_font)
         docs_text.setReadOnly(True)
 
-        doc_path = os.path.join(self.script_dir, "DOCUMENTATION.md")
+        doc_path = os.path.join(self.script_dir, "DOC.md")
         try:
             with open(doc_path, 'r', encoding='utf-8') as f:
                 doc_content = f.read()
@@ -401,7 +401,7 @@ class RABIDSGUI(QMainWindow):
         restore_options_group.setFont(title_font)
         restore_options_layout = QVBoxLayout(restore_options_group)
 
-        desc_label = QLabel("Select a dumpster file and a destination directory to restore its contents.")
+        desc_label = QLabel("Select a dumpster file and a destination directory to restore its contents.\nCopy all the desired files you want from victim's system")
         desc_label.setFont(subtitle_font)
         desc_label.setStyleSheet("color: #00B85B;")
         desc_label.setWordWrap(True)
