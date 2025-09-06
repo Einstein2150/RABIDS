@@ -406,7 +406,6 @@ class RABIDSGUI(QMainWindow):
         desc_label.setStyleSheet("color: #00B85B;")
         desc_label.setWordWrap(True)
         restore_options_layout.addWidget(desc_label)
-        restore_options_layout.addSpacing(10)
 
         dumpster_file_label = QLabel("Dumpster File Path")
         dumpster_file_label.setFont(subtitle_font)
@@ -513,11 +512,11 @@ class RABIDSGUI(QMainWindow):
         uncrash_exe_label.setStyleSheet("color: #f7f294;")
         self.uncrash_exe_name_edit = QLineEdit("decryptor")
         uncrash_os_label = QLabel("OS")
-        uncrash_os_label.setFont(subtitle_font) # This was correct
+        uncrash_os_label.setFont(subtitle_font) 
         self.uncrash_os_combo = QComboBox()
         self.uncrash_os_combo.addItems(["windows", "linux", "macos"])
         uncrash_arch_label = QLabel("Processor")
-        uncrash_arch_label.setFont(subtitle_font) # This was correct
+        uncrash_arch_label.setFont(subtitle_font)
         self.uncrash_arch_combo = QComboBox()
         self.uncrash_arch_combo.addItems(["amd64", "arm64"])
         uncrash_build_options_layout.addWidget(uncrash_exe_label)
@@ -544,7 +543,7 @@ class RABIDSGUI(QMainWindow):
         encrypted_devices_label.setFont(title_font)
         self.encrypted_devices_table = QTableWidget()
         self.encrypted_devices_table.setColumnCount(2)
-        self.encrypted_devices_table.setHorizontalHeaderLabels(["Device/File", "Status"])
+        self.encrypted_devices_table.setHorizontalHeaderLabels(["Device", "Status"])
         self.encrypted_devices_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.encrypted_devices_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         
