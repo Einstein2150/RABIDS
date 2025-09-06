@@ -231,7 +231,7 @@ class RABIDSGUI(QMainWindow):
         options_row2.addWidget(self.exe_name_input, 1)
 
         target_os_label = QLabel("OS")
-        target_os_label.setFont(subtitle_font) # This was correct, but let's ensure consistency
+        target_os_label.setFont(subtitle_font) 
         self.target_os_combo = QComboBox()
         self.target_os_combo.addItems(["windows", "linux", "macos"])
         self.target_os_combo.setFont(subtitle_font)
@@ -240,7 +240,7 @@ class RABIDSGUI(QMainWindow):
         options_row2.addWidget(self.target_os_combo, 1)
 
         target_arch_label = QLabel("PROCESSOR")
-        target_arch_label.setFont(subtitle_font) # This was also correct, ensuring it stays
+        target_arch_label.setFont(subtitle_font)
         self.target_arch_combo = QComboBox()
         self.target_arch_combo.addItems(["amd64", "arm64"])
         self.target_arch_combo.setFont(subtitle_font)
@@ -746,7 +746,7 @@ class RABIDSGUI(QMainWindow):
         self.module_table.setRowCount(len(self.selected_modules))
         for i, module in enumerate(self.selected_modules):
             module_name = module.split('/')[-1]
-            name_item = QTableWidgetItem(module_name) # Font is set on the table itself
+            name_item = QTableWidgetItem(module_name) 
             name_item.setFont(QFont("Arial", 10))
             name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self.module_table.setItem(i, 0, name_item)
