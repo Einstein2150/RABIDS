@@ -637,6 +637,10 @@ class RABIDSGUI(QMainWindow):
         subtitle_font = QFont()
         subtitle_font.setPointSize(10)
 
+        title_font = QFont()
+        title_font.setBold(True)
+        title_font.setPointSize(12)
+
         if not self.selected_modules:
             icon_label = QLabel()
             icon_path = os.path.join(self.script_dir, "ASSETS", "normal.png")
@@ -655,6 +659,7 @@ class RABIDSGUI(QMainWindow):
 
         if focused_module:
             self.module_options_group.setTitle(f"{focused_module.split('/')[-1].upper()} OPTIONS")
+            self.module_options_group.setFont(title_font)
         else:
             self.module_options_group.setTitle("MODULE OPTIONS")
 
@@ -668,6 +673,7 @@ class RABIDSGUI(QMainWindow):
             if not focused_module and len(self.selected_modules) > 1:
                 module_label = QLabel(f"{module_name.split('/')[-1].upper()} OPTIONS")
                 module_label.setStyleSheet("font-weight: bold; color: #999;")
+                module_label.setFont(title_font)
                 self.options_layout.addWidget(module_label)
 
             for option, value in MODULE_OPTIONS[module_name].items():
