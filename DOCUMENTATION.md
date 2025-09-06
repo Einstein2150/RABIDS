@@ -1,9 +1,3 @@
-# RABIDS
-
-This document provides a detailed overview of each module available in the RABIDS graphical user interface, including its purpose and configurable options.
-
----
-
 ## Installation and Setup
 
 Before running RABIDS, you need to install several dependencies for Python, Nim, and Rust. The obfuscation feature also requires Docker.

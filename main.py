@@ -357,6 +357,11 @@ class RABIDSGUI(QMainWindow):
 
         docs_widget = QWidget()
         docs_layout = QVBoxLayout(docs_widget)
+
+        doc_image_label = QLabel()
+        doc_image_path = os.path.join(self.script_dir, "ASSETS", "documentation.png")
+        pixmap = QPixmap(doc_image_path)
+        doc_image_label.setPixmap(pixmap.scaledToWidth(1000, Qt.SmoothTransformation))
         docs_text = QTextEdit()
         docs_text.setFont(subtitle_font)
         docs_text.setReadOnly(True)
@@ -371,6 +376,10 @@ class RABIDSGUI(QMainWindow):
 
         docs_text.setStyleSheet("background-color: #111113;")
         docs_layout.addWidget(docs_text)
+
+        doc_image_label.setFixedHeight(50)
+        doc_image_label.setAlignment(Qt.AlignCenter)
+        docs_layout.addWidget(doc_image_label)
 
         garbage_collector_widget = QWidget()
         garbage_collector_layout = QVBoxLayout(garbage_collector_widget)
@@ -523,18 +532,37 @@ class RABIDSGUI(QMainWindow):
 
         uncrash_layout.addWidget(uncrash_options_group)
 
+        bottom_section_layout = QHBoxLayout()
+
+        left_column_widget = QWidget()
+        left_column_layout = QVBoxLayout(left_column_widget)
+        
+        encrypted_devices_label = QLabel("ENCRYPTED DEVICES")
+        encrypted_devices_label.setFont(title_font)
+        self.encrypted_devices_table = QTableWidget()
+        self.encrypted_devices_table.setColumnCount(2)
+        self.encrypted_devices_table.setHorizontalHeaderLabels(["Device", "Status"])
+        self.encrypted_devices_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.encrypted_devices_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        
+        left_column_layout.addWidget(encrypted_devices_label)
+        left_column_layout.addWidget(self.encrypted_devices_table)
+        
         uncrash_image_label = QLabel()
         uncrash_image_path = os.path.join(self.script_dir, "ASSETS", "unkrash.png")
         pixmap = QPixmap(uncrash_image_path)
         if not pixmap.isNull():
-            uncrash_image_label.setPixmap(pixmap.scaled(1000, 400))
+            uncrash_image_label.setPixmap(pixmap.scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         uncrash_image_label.setAlignment(Qt.AlignCenter)
-        uncrash_layout.addWidget(uncrash_image_label)
-        uncrash_layout.addStretch()
+
+        bottom_section_layout.addWidget(left_column_widget, 6)
+        bottom_section_layout.addWidget(uncrash_image_label, 4) 
+
+        uncrash_layout.addLayout(bottom_section_layout)
 
         self.tab_widget.addTab(builder_widget, "BUILDER")
         self.tab_widget.addTab(output_widget, "OUTPUT")
-        self.tab_widget.addTab(uncrash_widget, "UNKRASH")
+        self.tab_widget.addTab(uncrash_widget, "KRASH")
         self.tab_widget.addTab(garbage_collector_widget, "GARBAGE COLLECTOR")
         self.tab_widget.addTab(docs_widget, "DOCUMENTATION")
         self.update_loot_folder_view()
