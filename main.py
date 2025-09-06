@@ -539,7 +539,7 @@ class RABIDSGUI(QMainWindow):
         left_column_widget = QWidget()
         left_column_layout = QVBoxLayout(left_column_widget)
         
-        encrypted_devices_label = QLabel("ENCRYPTED DEVICES")
+        encrypted_devices_label = QLabel("LIVE ENCRYPTED DEVICES")
         encrypted_devices_label.setFont(title_font)
         self.encrypted_devices_table = QTableWidget()
         self.encrypted_devices_table.setColumnCount(2)
