@@ -138,11 +138,21 @@ class RABIDSGUI(QMainWindow):
         QPushButton:pressed {
             background-color: #3c3c40;
         }
+        QLineEdit, QComboBox, QCheckBox {
+            font-weight: normal;
+            padding: 4px;
+            border-radius: 5px;
+            background-color: #1D1D1F;
+        }
         QGroupBox {
             border: none;
             margin-top: 10px;
             padding-top: 10px;
             font-weight: bold;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
         }
         QTabWidget::pane {
             padding: 0;
@@ -176,15 +186,11 @@ class RABIDSGUI(QMainWindow):
         builder_widget = QWidget()
         builder_layout = QHBoxLayout(builder_widget)
 
-        scroll_widget = QWidget()
-        scroll_layout = QHBoxLayout(scroll_widget)
-        builder_layout.addWidget(scroll_widget)
-
         title_font = QFont()
         title_font.setBold(True)
-        title_font.setPointSize(14)
+        title_font.setPointSize(12)
         subtitle_font = QFont()
-        subtitle_font.setPointSize(12)
+        subtitle_font.setPointSize(10)
 
         left_layout = QVBoxLayout()
 
@@ -222,24 +228,24 @@ class RABIDSGUI(QMainWindow):
         self.exe_name_input = QLineEdit("payload")
         self.exe_name_input.setFont(subtitle_font)
         options_row2.addWidget(exe_name_label)
-        options_row2.addWidget(self.exe_name_input)
+        options_row2.addWidget(self.exe_name_input, 1)
 
         target_os_label = QLabel("OS")
-        target_os_label.setFont(subtitle_font)
+        target_os_label.setFont(subtitle_font) # This was correct, but let's ensure consistency
         self.target_os_combo = QComboBox()
         self.target_os_combo.addItems(["windows", "linux", "macos"])
         self.target_os_combo.setFont(subtitle_font)
         self.target_os_combo.currentTextChanged.connect(self.update_obfuscation_for_os)
         options_row2.addWidget(target_os_label)
-        options_row2.addWidget(self.target_os_combo)
+        options_row2.addWidget(self.target_os_combo, 1)
 
         target_arch_label = QLabel("PROCESSOR")
-        target_arch_label.setFont(subtitle_font)
+        target_arch_label.setFont(subtitle_font) # This was also correct, ensuring it stays
         self.target_arch_combo = QComboBox()
         self.target_arch_combo.addItems(["amd64", "arm64"])
         self.target_arch_combo.setFont(subtitle_font)
         options_row2.addWidget(target_arch_label)
-        options_row2.addWidget(self.target_arch_combo)
+        options_row2.addWidget(self.target_arch_combo, 1)
         left_layout.addLayout(options_row2)
 
         build_btn_layout = QHBoxLayout()
@@ -264,11 +270,11 @@ class RABIDSGUI(QMainWindow):
         banner_layout.addWidget(self.banner_label, stretch=1)
         left_layout.addLayout(banner_layout)
 
-        scroll_layout.addLayout(left_layout, 6)
+        builder_layout.addLayout(left_layout, 6)
 
         right_layout = QVBoxLayout()
         module_select_layout = QVBoxLayout()
-        module_select_layout.setContentsMargins(0, 14, 0, 0)
+        module_select_layout.setContentsMargins(0, 12, 0, 0)
         module_label = QLabel("MODULES")
         module_label.setFont(title_font)
         module_select_layout.addWidget(module_label)
@@ -309,10 +315,11 @@ class RABIDSGUI(QMainWindow):
         self.module_table.cellClicked.connect(self.on_module_clicked)
         right_layout.addWidget(self.module_table)
 
-        scroll_layout.addLayout(right_layout, 4)
+        builder_layout.addLayout(right_layout, 4)
 
         output_widget = QWidget()
         output_layout = QVBoxLayout(output_widget)
+        output_layout.setContentsMargins(15, 15, 15, 15)
         self.output_log = QTextEdit()
         self.output_log.setFont(subtitle_font)
         self.output_log.setReadOnly(True)
@@ -357,11 +364,8 @@ class RABIDSGUI(QMainWindow):
 
         docs_widget = QWidget()
         docs_layout = QVBoxLayout(docs_widget)
+        docs_layout.setContentsMargins(15, 15, 15, 15)
 
-        doc_image_label = QLabel()
-        doc_image_path = os.path.join(self.script_dir, "ASSETS", "documentation.png")
-        pixmap = QPixmap(doc_image_path)
-        doc_image_label.setPixmap(pixmap.scaledToWidth(1000, Qt.SmoothTransformation))
         docs_text = QTextEdit()
         docs_text.setFont(subtitle_font)
         docs_text.setReadOnly(True)
@@ -377,14 +381,10 @@ class RABIDSGUI(QMainWindow):
         docs_text.setStyleSheet("background-color: #111113;")
         docs_layout.addWidget(docs_text)
 
-        doc_image_label.setFixedHeight(50)
-        doc_image_label.setAlignment(Qt.AlignCenter)
-        docs_layout.addWidget(doc_image_label)
-
         garbage_collector_widget = QWidget()
         garbage_collector_layout = QVBoxLayout(garbage_collector_widget)
-        garbage_collector_layout.setContentsMargins(20, 20, 20, 20)
-        garbage_collector_layout.setSpacing(20)
+        garbage_collector_layout.setContentsMargins(15, 15, 15, 15)
+        garbage_collector_layout.setSpacing(15)
 
         top_widget = QWidget()
         top_layout = QHBoxLayout(top_widget)
@@ -402,31 +402,32 @@ class RABIDSGUI(QMainWindow):
         restore_options_layout = QVBoxLayout(restore_options_group)
 
         desc_label = QLabel("Select a dumpster file and a destination directory to restore its contents.")
+        desc_label.setFont(subtitle_font)
         desc_label.setStyleSheet("color: #00B85B;")
         desc_label.setWordWrap(True)
         restore_options_layout.addWidget(desc_label)
         restore_options_layout.addSpacing(10)
 
         dumpster_file_label = QLabel("Dumpster File Path")
-        dumpster_file_label.setStyleSheet("color: #93dbb6; font-size: 10px;")
-        restore_options_layout.addWidget(dumpster_file_label)
+        dumpster_file_label.setFont(subtitle_font)
+        dumpster_file_label.setStyleSheet("color: #93dbb6;")
         dumpster_file_layout = QHBoxLayout()
         self.restore_dumpster_file_edit = QLineEdit()
         dumpster_file_btn = QPushButton("Browse...")
         dumpster_file_btn.clicked.connect(lambda: self.browse_open_file(self.restore_dumpster_file_edit))
+        dumpster_file_layout.addWidget(dumpster_file_label)
         dumpster_file_layout.addWidget(self.restore_dumpster_file_edit)
         dumpster_file_layout.addWidget(dumpster_file_btn)
         restore_options_layout.addLayout(dumpster_file_layout)
 
-        restore_options_layout.addSpacing(10)
-
         output_dir_label = QLabel("Destination Directory")
-        output_dir_label.setStyleSheet("color: #93dbb6; font-size: 10px;")
-        restore_options_layout.addWidget(output_dir_label)
+        output_dir_label.setFont(subtitle_font)
+        output_dir_label.setStyleSheet("color: #93dbb6;")
         output_dir_layout = QHBoxLayout()
         self.restore_output_dir_edit = QLineEdit()
         output_dir_btn = QPushButton("Browse...")
         output_dir_btn.clicked.connect(lambda: self.browse_directory(self.restore_output_dir_edit))
+        output_dir_layout.addWidget(output_dir_label)
         output_dir_layout.addWidget(self.restore_output_dir_edit)
         output_dir_layout.addWidget(output_dir_btn)
         restore_options_layout.addLayout(output_dir_layout)
@@ -435,7 +436,6 @@ class RABIDSGUI(QMainWindow):
         restore_btn.setFont(subtitle_font)
         restore_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         restore_btn.clicked.connect(self.run_garbage_collector_restore)
-        restore_options_layout.addSpacing(10)
         restore_options_layout.addWidget(restore_btn)
         restore_options_layout.addStretch()
         top_layout.addWidget(restore_options_group, 7)
@@ -463,7 +463,7 @@ class RABIDSGUI(QMainWindow):
 
         uncrash_widget = QWidget()
         uncrash_layout = QVBoxLayout(uncrash_widget)
-        uncrash_layout.setContentsMargins(20, 20, 20, 20)
+        uncrash_layout.setContentsMargins(15, 15, 15, 15)
         uncrash_layout.setSpacing(15)
 
         uncrash_options_group = QGroupBox("DECRYPTOR")
@@ -480,7 +480,7 @@ class RABIDSGUI(QMainWindow):
         key_layout = QHBoxLayout()
         key_label = QLabel("Key")
         key_label.setFont(subtitle_font)
-        key_label.setStyleSheet("color: #f7f294; font-size: 10px;")
+        key_label.setStyleSheet("color: #f7f294;")
         self.uncrash_key_edit = QLineEdit("0123456789abcdef0123456789abcdef")
         self.uncrash_key_edit.setFont(subtitle_font)
         key_layout.addWidget(key_label)
@@ -490,7 +490,7 @@ class RABIDSGUI(QMainWindow):
         iv_layout = QHBoxLayout()
         iv_label = QLabel("IV")
         iv_label.setFont(subtitle_font)
-        iv_label.setStyleSheet("color: #f7f294; font-size: 10px;")
+        iv_label.setStyleSheet("color: #f7f294;")
         self.uncrash_iv_edit = QLineEdit("abcdef9876543210")
         self.uncrash_iv_edit.setFont(subtitle_font)
         iv_layout.addWidget(iv_label)
@@ -500,7 +500,7 @@ class RABIDSGUI(QMainWindow):
         ext_layout = QHBoxLayout()
         ext_label = QLabel("Extension")
         ext_label.setFont(subtitle_font)
-        ext_label.setStyleSheet("color: #f7f294; font-size: 10px;")
+        ext_label.setStyleSheet("color: #f7f294;")
         self.uncrash_ext_edit = QLineEdit(".locked")
         self.uncrash_ext_edit.setFont(subtitle_font)
         ext_layout.addWidget(ext_label)
@@ -509,20 +509,23 @@ class RABIDSGUI(QMainWindow):
 
         uncrash_build_options_layout = QHBoxLayout()
         uncrash_exe_label = QLabel("EXE Name")
-        uncrash_exe_label.setStyleSheet("color: #f7f294; font-size: 10px;")
+        uncrash_exe_label.setFont(subtitle_font)
+        uncrash_exe_label.setStyleSheet("color: #f7f294;")
         self.uncrash_exe_name_edit = QLineEdit("decryptor")
         uncrash_os_label = QLabel("OS")
+        uncrash_os_label.setFont(subtitle_font) # This was correct
         self.uncrash_os_combo = QComboBox()
         self.uncrash_os_combo.addItems(["windows", "linux", "macos"])
         uncrash_arch_label = QLabel("Processor")
+        uncrash_arch_label.setFont(subtitle_font) # This was correct
         self.uncrash_arch_combo = QComboBox()
         self.uncrash_arch_combo.addItems(["amd64", "arm64"])
         uncrash_build_options_layout.addWidget(uncrash_exe_label)
-        uncrash_build_options_layout.addWidget(self.uncrash_exe_name_edit)
+        uncrash_build_options_layout.addWidget(self.uncrash_exe_name_edit, 1)
         uncrash_build_options_layout.addWidget(uncrash_os_label)
-        uncrash_build_options_layout.addWidget(self.uncrash_os_combo)
+        uncrash_build_options_layout.addWidget(self.uncrash_os_combo, 1)
         uncrash_build_options_layout.addWidget(uncrash_arch_label)
-        uncrash_build_options_layout.addWidget(self.uncrash_arch_combo)
+        uncrash_build_options_layout.addWidget(self.uncrash_arch_combo, 1)
         uncrash_options_layout.addLayout(uncrash_build_options_layout)
 
         self.uncrash_build_btn = QPushButton("BUILD DECRYPTOR")
@@ -541,7 +544,7 @@ class RABIDSGUI(QMainWindow):
         encrypted_devices_label.setFont(title_font)
         self.encrypted_devices_table = QTableWidget()
         self.encrypted_devices_table.setColumnCount(2)
-        self.encrypted_devices_table.setHorizontalHeaderLabels(["Device", "Status"])
+        self.encrypted_devices_table.setHorizontalHeaderLabels(["Device/File", "Status"])
         self.encrypted_devices_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.encrypted_devices_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         
@@ -632,7 +635,7 @@ class RABIDSGUI(QMainWindow):
         self.option_inputs.clear()
 
         subtitle_font = QFont()
-        subtitle_font.setPointSize(12)
+        subtitle_font.setPointSize(10)
 
         if not self.selected_modules:
             icon_label = QLabel()
@@ -664,7 +667,7 @@ class RABIDSGUI(QMainWindow):
 
             if not focused_module and len(self.selected_modules) > 1:
                 module_label = QLabel(f"{module_name.split('/')[-1].upper()} OPTIONS")
-                module_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #999;")
+                module_label.setStyleSheet("font-weight: bold; color: #999;")
                 self.options_layout.addWidget(module_label)
 
             for option, value in MODULE_OPTIONS[module_name].items():
@@ -743,25 +746,25 @@ class RABIDSGUI(QMainWindow):
         self.module_table.setRowCount(len(self.selected_modules))
         for i, module in enumerate(self.selected_modules):
             module_name = module.split('/')[-1]
-            name_item = QTableWidgetItem(module_name)
-            name_item.setFont(QFont("Arial", 12))
+            name_item = QTableWidgetItem(module_name) # Font is set on the table itself
+            name_item.setFont(QFont("Arial", 10))
             name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self.module_table.setItem(i, 0, name_item)
 
             up_btn = QPushButton("↑")
-            up_btn.setFont(QFont("Arial", 10))
+            up_btn.setFont(QFont("Arial", 8))
             up_btn.clicked.connect(lambda _, r=i: self.move_module_up(r))
             up_btn.setEnabled(i > 0)
             self.module_table.setCellWidget(i, 1, up_btn)
 
             down_btn = QPushButton("↓")
-            down_btn.setFont(QFont("Arial", 10))
+            down_btn.setFont(QFont("Arial", 8))
             down_btn.clicked.connect(lambda _, r=i: self.move_module_down(r))
             down_btn.setEnabled(i < len(self.selected_modules) - 1)
             self.module_table.setCellWidget(i, 2, down_btn)
 
             remove_btn = QPushButton("X")
-            remove_btn.setFont(QFont("Arial", 10))
+            remove_btn.setFont(QFont("Arial", 8))
             remove_btn.clicked.connect(lambda _, r=i: self.remove_module(r))
             self.module_table.setCellWidget(i, 3, remove_btn)
 
@@ -801,7 +804,7 @@ class RABIDSGUI(QMainWindow):
         self.loading_movie = QMovie(icon_path)
         if not self.loading_movie.isValid():
             icon_label.setText("Building...")
-            icon_label.setStyleSheet("color: #F4A87C; font-size: 12px;")
+            icon_label.setStyleSheet("color: #F4A87C;")
         else:
             icon_label.setMovie(self.loading_movie)
             original_size = self.loading_movie.frameRect().size()
