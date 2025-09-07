@@ -783,12 +783,11 @@ class RABIDSGUI(QMainWindow):
         self.update_options_layout(focused_module=item.data(Qt.UserRole))
 
     def reorder_modules(self, new_order):
-        # This check prevents re-updating if the order hasn't actually changed.
         if self.selected_modules == new_order:
             return
         self.log_message("Module chain reordered.", "system")
         self.selected_modules = new_order
-        self.update_module_table() # Re-draw to fix button connections
+        self.update_module_table() 
  
     def update_module_table(self):
         self.module_table.setRowCount(len(self.selected_modules))
@@ -796,7 +795,7 @@ class RABIDSGUI(QMainWindow):
             module_name = module.split('/')[-1]
             name_item = QTableWidgetItem(module_name) 
             name_item.setFont(QFont("Arial", 10))
-            name_item.setData(Qt.UserRole, module) # Store full module path
+            name_item.setData(Qt.UserRole, module)
             name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self.module_table.setItem(i, 0, name_item)
 
