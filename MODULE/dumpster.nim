@@ -54,9 +54,9 @@ proc restore(dumpster: string, output_dir: string) =
         echo "error reading from the dumpster file"
     
 const
-    inputDir = ""
-    dumpsterFile = ""
-    outputDir = ""
+    inputDir* = ""
+    dumpsterFile* = ""
+    outputDir* = ""
 
 proc main() =
     when defined(collectMode):

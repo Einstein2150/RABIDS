@@ -1,8 +1,8 @@
 import dimscord, asyncdispatch, times, options, httpclient, osproc, os, strutils, json, threadpool, streams
 
 const
-  discordToken = ""
-  creatorId = ""
+  discordToken* = ""
+  creatorId* = ""
 let discord = newDiscordClient(discordToken)
 
 var

