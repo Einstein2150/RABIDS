@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 from pathlib import Path
+import platform
 import sys
 import os
 import shutil
@@ -9,15 +10,22 @@ import shlex
 import subprocess
 import tempfile
 import base64
-def compile_nim(nim_file, output_exe, os_name, arch, hide_console=False):
+def compile_nim(nim_file, output_exe, os_name, arch, hide_console=False, nim_defines=None):
     output_exe = Path(output_exe).resolve()
     print(f"[*] Compiling Nim -> {os_name}:{arch}")
+
+    if nim_defines is None:
+        nim_defines = []
 
     nim_cmd = [
         "nim", "c",
         "-d:release",
         "-d:ssl",
     ]
+
+    for define in nim_defines:
+        nim_cmd.append(f"-d:{define}")
+
     if os_name == "windows":
         if sys.platform == "darwin":
             nim_cmd.append("-d:mingw")
@@ -115,14 +123,21 @@ def apply_options_with_regex(content, options):
     if not options:
         return content
 
+    new_options = []
     for option in options:
-        key, value = option.split("=", 1)
-        escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
-        pattern = re.compile(r'((?:let|const|var)\s+' + re.escape(key) + r'\s*=\s*(?:[a-zA-Z0-9_]+\()?)".*?"', re.DOTALL)
-        content = pattern.sub(r'\1"' + escaped_value + '"', content, count=1)
-    return content
+        if "=" in option:
+            key, value = option.split("=", 1)
+            # This is a key-value pair, apply with regex
+            escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
+            pattern = re.compile(r'((?:let|const|var)\s+' + re.escape(key) + r'\s*=\s*(?:[a-zA-Z0-9_]+\()?)".*?"', re.DOTALL)
+            content = pattern.sub(r'\1"' + escaped_value + '"', content, count=1)
+        else:
+            # This is a flag-like option, keep it for later
+            new_options.append(option)
 
-def merge_nim_modules(nim_files, out_dir: Path, options=None):
+    return content, new_options
+
+def merge_nim_modules(nim_files, out_dir: Path, options=None) -> (Path, list):
     """Merge multiple Nim modules into a single file, deduplicating imports and combining proc main()."""
     if len(nim_files) < 2:
         print("[Error] At least two Nim files must be provided for merging.")
@@ -135,6 +150,7 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None):
     merged_imports = set()
     merged_code = []
     main_contents = []
+    remaining_options = list(options) if options else []
 
     for f in nim_files:
         fpath = Path(f)
@@ -145,7 +161,7 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None):
         with open(f, "r", encoding="utf-8") as fh:
             content = fh.read()
         
-        content = apply_options_with_regex(content, options)
+        content, remaining_options = apply_options_with_regex(content, remaining_options)
 
         main_contents.append(extract_main_proc(content))
 
@@ -214,18 +230,22 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None):
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(final_content)
 
-    # print("[*] --- Begin Combined Nim Code ---\n" + final_content + "\n[*] --- End Combined Nim Code ---")
+    print("[*] --- Begin Combined Nim Code ---\n" + final_content + "\n[*] --- End Combined Nim Code ---")
     print(f"[+] Wrote merged Nim file: {out_path}")
-    return out_path
+    return out_path, remaining_options
 
-def patch_nim_file(nim_file: Path, options: list):
+def patch_nim_file(nim_file: Path, options: list) -> list:
     """Injects const declarations into a single Nim file."""
+    nim_defines = []
     if options:
         print(f"[*] Patching {nim_file.name} with options: {options}")
         content = nim_file.read_text(encoding="utf-8")
         
-        content = apply_options_with_regex(content, options)
+        content, nim_defines = apply_options_with_regex(content, options)
         nim_file.write_text(content, encoding="utf-8")
+    
+    print(f"[*] Found nim defines: {nim_defines}")
+    return nim_defines
 
 def parse_target(target_str):
     """Parse the target string into OS and architecture."""
@@ -450,16 +470,17 @@ def main():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_dir = Path(tmpdir)
+        nim_defines = []
         if args.merge:
-            launcher_source = merge_nim_modules(args.merge, tmp_dir, options=nim_options)
+            launcher_source, nim_defines = merge_nim_modules(args.merge, tmp_dir, options=nim_options)
         else:
             launcher_source = Path(args.nim_file)
-            patch_nim_file(launcher_source, nim_options)
+            nim_defines = patch_nim_file(launcher_source, nim_options)
 
         suffix = ".exe" if target_os == "windows" else ""
         nim_exe_tmp = tmp_dir / f"{final_exe.stem}_nim_payload{suffix}"
         should_hide_nim_console = args.hide_console and target_os == "windows"
-        compile_nim(launcher_source, nim_exe_tmp, target_os, target_arch, hide_console=should_hide_nim_console)
+        compile_nim(launcher_source, nim_exe_tmp, target_os, target_arch, hide_console=should_hide_nim_console, nim_defines=nim_defines)
 
         if not args.nim_only and target_os == 'windows':
             print("[*] Generating Rust wrapper to embed Nim payload.")

