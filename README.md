@@ -8,10 +8,10 @@ This tool is designed for security researchers, red teamers, and educational pur
 
 1.  **Install GUI Dependency:**
 
-    The user interface requires `PyQt5` Install it using pip:
+    The user interface requires `PyQt5` and `discord` Install it using pip:
 
     ```bash
-    pip install PyQt5
+    pip install PyQt5 discord
     ```
 
 2.  **Run the Application:**
