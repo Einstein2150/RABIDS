@@ -448,12 +448,12 @@ def main():
             for const_name, dll_name in MODULE_DLLS[normalized_path].items():
                 dll_path = dll_source_dir / dll_name
                 if dll_path.exists():
-                    dll_content = dll_path.read_bytes()
                     if not args.nim_only and target_os == 'windows':
                         print(f"[*] Queuing {dll_name} for Rust wrapper embedding.")
-                        embedded_files_for_rust[dll_name] = dll_content
+                        embedded_files_for_rust[dll_name] = dll_path.read_bytes()
                     else:
                         print(f"[*] Embedding {dll_name} as base64 for {Path(module_path).name}")
+                        dll_content = dll_path.read_bytes()
                         b64_content = base64.b64encode(dll_content).decode('utf-8')
                         nim_options.append(f"{const_name}={b64_content}")
 

