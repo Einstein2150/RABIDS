@@ -867,7 +867,7 @@ class RABIDSGUI(QMainWindow):
         c2_header_layout.addWidget(c2_title)
         c2_left_layout.addLayout(c2_header_layout)
 
-        c2_desc = QLabel("Connect to RAT to send commands to and receive output from the 'ghostintheshell' payload. \n Control victim's device remotely")
+        c2_desc = QLabel("Connect to RAT to send commands to and receive output from the 'ghostintheshell' payload. \nControl victim's device remotely")
         c2_desc.setFont(subtitle_font)
         c2_desc.setStyleSheet("color: #00A9FD;")
         c2_desc.setWordWrap(True)
