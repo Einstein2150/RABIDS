@@ -187,7 +187,7 @@ class DiscordC2Client(QObject):
         @self.client.event
         async def on_message(message):
             is_dm = isinstance(message.channel, discord.DMChannel)
-            
+
             if is_dm:
                 content = message.content.strip()
                 if content:
@@ -477,13 +477,11 @@ class RABIDSGUI(QMainWindow):
         module_options_group_layout.addWidget(scroll_area)
         left_layout.addWidget(self.module_options_group, stretch=7)
         
-        # --- Global Build Options ---
         build_options_group = QGroupBox("BUILD OPTIONS")
         build_options_group.setFont(title_font)
         build_options_layout = QVBoxLayout(build_options_group)
         build_options_layout.setSpacing(10)
 
-        # EXE Name
         exe_name_layout = QHBoxLayout()
         exe_name_label = QLabel("EXE NAME")
         exe_name_label.setFont(subtitle_font)
@@ -492,7 +490,6 @@ class RABIDSGUI(QMainWindow):
         exe_name_layout.addWidget(exe_name_label)
         exe_name_layout.addWidget(self.exe_name_input, 1)
 
-        # OS and Arch
         target_os_label = QLabel("OS")
         target_os_label.setFont(subtitle_font) 
         self.target_os_combo = QComboBox()
@@ -510,7 +507,6 @@ class RABIDSGUI(QMainWindow):
         exe_name_layout.addWidget(self.target_arch_combo, 1)
         build_options_layout.addLayout(exe_name_layout)
 
-        # Windows-specific options
         win_options_layout = QHBoxLayout()
         self.hide_console_check = QCheckBox("HIDE CONSOLE")
         self.hide_console_check.setFont(subtitle_font)
@@ -857,7 +853,6 @@ class RABIDSGUI(QMainWindow):
 
         uncrash_layout.addLayout(bottom_section_layout)
 
-        # C2 Tab
         c2_widget = QWidget()
         c2_main_layout = QHBoxLayout(c2_widget)
         c2_main_layout.setContentsMargins(15, 15, 15, 15)
@@ -912,7 +907,6 @@ class RABIDSGUI(QMainWindow):
         c2_main_layout.addWidget(c2_left_column_widget, 6)
         c2_main_layout.addWidget(c2_image_label, 4)
 
-        # Settings Tab
         settings_widget = QWidget()
         settings_layout = QVBoxLayout(settings_widget)
         settings_layout.setContentsMargins(15, 15, 15, 15)
@@ -933,7 +927,6 @@ class RABIDSGUI(QMainWindow):
             setting_layout.addSpacing(10)
             return setting_layout
 
-        # GUI Listener Settings
         listener_token_label = QLabel("Listener Bot Token")
         self.settings_discord_token_edit = QLineEdit()
         listener_token_desc = "The authentication token for the Discord bot. Used by the KRASH listener and C2 functionality."
@@ -946,10 +939,8 @@ class RABIDSGUI(QMainWindow):
         listener_creator_id_layout = create_setting_layout(listener_creator_id_label.text(), self.settings_listener_creator_id_edit, listener_creator_id_desc)
         settings_layout.addLayout(listener_creator_id_layout)
 
-        # Add stretch to the settings tab for spacing
         settings_layout.addStretch()
 
-        # Save Settings Button
         save_settings_btn = QPushButton("Save Settings")
         save_settings_btn.setFont(subtitle_font)
         save_settings_btn.clicked.connect(self.save_settings)
@@ -1068,7 +1059,6 @@ class RABIDSGUI(QMainWindow):
                 module_label.setFont(title_font)
                 self.options_layout.addWidget(module_label)
 
-            # Use current values if available, otherwise fall back to defaults
             module_defaults = MODULE_OPTIONS.get(module_name, {})
             module_current_values = self.current_option_values.get(module_name, {})
             
@@ -1253,9 +1243,9 @@ class RABIDSGUI(QMainWindow):
             color = "#00A9FD"
         
         if msg_type == "c2_sent":
-            color = "#e0e0e0" # White for sent
+            color = "#e0e0e0"
         elif msg_type == "c2_recv":
-            color = "#B7CE42" # Green for received
+            color = "#B7CE42"
 
 
         if not message.strip():
@@ -1501,7 +1491,6 @@ class RABIDSGUI(QMainWindow):
                 self.c2_thread = None
 
     def log_c2_message(self, message, msg_type):
-        # Reusing log_message logic for color, but directing output to c2_log
         color_map = {"error": "#D81960", "success": "#B7CE42", "system": "#FFA473", "c2_sent": "#e0e0e0", "c2_recv": "#B7CE42", "c2_debug": "#888888"}
         color = color_map.get(msg_type, "#00A9FD")
         self.c2_log.append(f'<font color="{color}">{message}</font>')
@@ -1558,11 +1547,11 @@ class RABIDSGUI(QMainWindow):
         for row in range(self.encrypted_devices_table.rowCount()):
             item = self.encrypted_devices_table.item(row, 0)
             if item and item.text() == hostname:
-                if status == "Decrypted": # Device is decrypted, remove it
+                if status == "Decrypted":
                     self.encrypted_devices_table.removeRow(row) 
                 return
         
-        if status == "Encrypted": # New device is encrypted, add it
+        if status == "Encrypted":
             row_position = self.encrypted_devices_table.rowCount()
             self.log_message(f"Encryption confirmed on: {hostname}", "success")
             self.encrypted_devices_table.insertRow(row_position)
