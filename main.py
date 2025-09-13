@@ -990,19 +990,19 @@ class RABIDSGUI(QMainWindow):
         installer_layout.addWidget(installer_desc)
 
         # New buttons for Nim and Rust installation
-        self.install_nim_tool_btn = QPushButton("1. Install Nim")
+        self.install_nim_tool_btn = QPushButton("Install Nim")
         self.install_nim_tool_btn.clicked.connect(self.install_nim_tool)
         installer_layout.addWidget(self.install_nim_tool_btn)
 
-        self.install_rust_tool_btn = QPushButton("2. Install Rust")
+        self.install_rust_tool_btn = QPushButton("Install Rust")
         self.install_rust_tool_btn.clicked.connect(self.install_rust_tool)
         installer_layout.addWidget(self.install_rust_tool_btn)
 
-        self.install_py_btn = QPushButton("3. Install Python Packages")
+        self.install_py_btn = QPushButton("Install Python Packages")
         self.install_py_btn.clicked.connect(self.run_python_installer)
         installer_layout.addWidget(self.install_py_btn)
 
-        self.install_nim_btn = QPushButton("4. Install Nimble Packages")
+        self.install_nim_btn = QPushButton("Install Nimble Packages")
         self.install_nim_btn.clicked.connect(self.run_nim_installer)
         installer_layout.addWidget(self.install_nim_btn)
 
@@ -1013,7 +1013,7 @@ class RABIDSGUI(QMainWindow):
         openssl_note.setWordWrap(True)
         installer_layout.addWidget(openssl_note)
 
-        self.install_rust_btn = QPushButton("5. Install Rust Targets")
+        self.install_rust_btn = QPushButton("Install Rust Targets")
         self.install_rust_btn.clicked.connect(self.run_rust_installer)
         installer_layout.addWidget(self.install_rust_btn)
 
@@ -1027,7 +1027,7 @@ class RABIDSGUI(QMainWindow):
         docker_desc.setWordWrap(True)
         docker_layout.addWidget(docker_desc)
 
-        self.install_docker_btn = QPushButton("6. Pull Docker Image")
+        self.install_docker_btn = QPushButton("Pull Docker Image")
         self.install_docker_btn.clicked.connect(self.run_docker_installer)
         docker_layout.addWidget(self.install_docker_btn)
 
