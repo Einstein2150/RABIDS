@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
 )
 import json
 from PyQt5.QtGui import QFont, QPixmap, QMovie, QIcon
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer, QUrl
 import discord
 import asyncio
 
@@ -335,6 +335,42 @@ class C2Thread(QThread):
         if self.loop and self.c2_client:
             asyncio.run_coroutine_threadsafe(self.c2_client.stop_client(), self.loop)
 
+class DependencyInstallerThread(QThread):
+    log_signal = pyqtSignal(str, str)
+    finished_signal = pyqtSignal()
+    
+    def __init__(self, commands, parent=None):
+        super().__init__(parent)
+        self.commands = commands
+
+    def run(self):
+        for cmd in self.commands:
+            self.run_command(cmd)
+        self.finished_signal.emit()
+
+    def run_command(self, cmd):
+        # If cmd is a string, it's a shell command. Otherwise, it's a list of args.
+        is_shell_command = isinstance(cmd, str)
+        command_str = cmd if is_shell_command else ' '.join(shlex.quote(c) for c in cmd)
+
+        self.log_signal.emit(f"[*] Running: {command_str}", "system")
+        try:
+            output = subprocess.check_output(
+                cmd,
+                stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
+                shell=is_shell_command  # Use shell=True only for string commands
+            )
+            for line in output.splitlines():
+                self.log_signal.emit(line.strip(), "system")
+            self.log_signal.emit(f"[+] Command finished successfully.", "success")
+        except FileNotFoundError:
+            cmd_name = cmd.split()[0] if is_shell_command else cmd[0]
+            self.log_signal.emit(f"[Error] Command '{cmd_name}' not found. Please ensure it is installed and in your PATH.", "error")
+        except subprocess.CalledProcessError as e:
+            self.log_signal.emit(f"[-] Command failed with exit code {e.returncode}. Output:", "error")
+            for line in e.output.splitlines():
+                self.log_signal.emit(line.strip(), "error")
+
 class ModuleTableWidget(QTableWidget):
     """A QTableWidget that supports drag-and-drop row reordering."""
     reorder_signal = pyqtSignal(list)
@@ -379,6 +415,7 @@ class RABIDSGUI(QMainWindow):
         self.build_thread = None
         self.discord_thread = None
         self.c2_thread = None
+        self.installer_thread = None
         self.option_inputs = {}
         self.current_option_values = {}
         self.module_options_group = None
@@ -909,7 +946,7 @@ class RABIDSGUI(QMainWindow):
 
         settings_widget = QWidget()
         settings_layout = QVBoxLayout(settings_widget)
-        settings_layout.setContentsMargins(15, 15, 15, 15)
+        settings_layout.setContentsMargins(0, 15, 0, 15)
 
         def create_setting_layout(label_text, input_widget, description_text):
             setting_layout = QVBoxLayout()
@@ -920,6 +957,7 @@ class RABIDSGUI(QMainWindow):
             desc_label.setFont(QFont("Arial", 8))
             desc_label.setStyleSheet("color: #808080;")
             desc_label.setWordWrap(True)
+            setting_layout.setContentsMargins(15, 0, 15, 0)
             label_layout.addWidget(label)
             setting_layout.addLayout(label_layout)
             setting_layout.addWidget(input_widget)
@@ -939,12 +977,77 @@ class RABIDSGUI(QMainWindow):
         listener_creator_id_layout = create_setting_layout(listener_creator_id_label.text(), self.settings_listener_creator_id_edit, listener_creator_id_desc)
         settings_layout.addLayout(listener_creator_id_layout)
 
+        settings_layout.addSpacing(20)
+
+        installer_group = QGroupBox("Dependency Installation")
+        installer_group.setFont(title_font)
+        installer_layout = QVBoxLayout(installer_group)
+        installer_layout.setContentsMargins(15, 0, 15, 0)
+        
+        installer_desc = QLabel("Install the core compilers and their required packages. It is recommended to run these in order.")
+        installer_desc.setFont(subtitle_font)
+        installer_desc.setWordWrap(True)
+        installer_layout.addWidget(installer_desc)
+
+        # New buttons for Nim and Rust installation
+        self.install_nim_tool_btn = QPushButton("1. Install Nim")
+        self.install_nim_tool_btn.clicked.connect(self.install_nim_tool)
+        installer_layout.addWidget(self.install_nim_tool_btn)
+
+        self.install_rust_tool_btn = QPushButton("2. Install Rust")
+        self.install_rust_tool_btn.clicked.connect(self.install_rust_tool)
+        installer_layout.addWidget(self.install_rust_tool_btn)
+
+        self.install_py_btn = QPushButton("3. Install Python Packages")
+        self.install_py_btn.clicked.connect(self.run_python_installer)
+        installer_layout.addWidget(self.install_py_btn)
+
+        self.install_nim_btn = QPushButton("4. Install Nimble Packages")
+        self.install_nim_btn.clicked.connect(self.run_nim_installer)
+        installer_layout.addWidget(self.install_nim_btn)
+
+        openssl_note = QLabel('For Windows, if the Nim build fails with SSL errors, you may need to manually download OpenSSL from <a href="https://openssl-library.org/source/">https://openssl-library.org/source/</a>')
+        openssl_note.setOpenExternalLinks(True)
+        openssl_note.setFont(QFont("Arial", 8))
+        openssl_note.setStyleSheet("color: #808080;")
+        openssl_note.setWordWrap(True)
+        installer_layout.addWidget(openssl_note)
+
+        self.install_rust_btn = QPushButton("5. Install Rust Targets")
+        self.install_rust_btn.clicked.connect(self.run_rust_installer)
+        installer_layout.addWidget(self.install_rust_btn)
+
+        docker_group = QGroupBox("Obfuscation Dependencies (Optional)")
+        docker_group.setFont(title_font)
+        docker_layout = QVBoxLayout(docker_group)
+        docker_layout.setContentsMargins(0, 0, 0, 0)
+
+        docker_desc = QLabel("The obfuscation feature requires Docker. This will pull the large Obfuscator-LLVM image from the container registry.")
+        docker_desc.setFont(subtitle_font)
+        docker_desc.setWordWrap(True)
+        docker_layout.addWidget(docker_desc)
+
+        self.install_docker_btn = QPushButton("6. Pull Docker Image")
+        self.install_docker_btn.clicked.connect(self.run_docker_installer)
+        docker_layout.addWidget(self.install_docker_btn)
+
+        installer_layout.addWidget(docker_group)
+
+        self.installer_buttons = [self.install_nim_tool_btn, self.install_rust_tool_btn, self.install_py_btn, self.install_nim_btn, self.install_rust_btn, self.install_docker_btn]
+
+
+        settings_layout.addWidget(installer_group)
+
         settings_layout.addStretch()
 
         save_settings_btn = QPushButton("Save Settings")
         save_settings_btn.setFont(subtitle_font)
         save_settings_btn.clicked.connect(self.save_settings)
-        settings_layout.addWidget(save_settings_btn)
+        save_btn_container = QWidget()
+        save_btn_layout = QHBoxLayout(save_btn_container)
+        save_btn_layout.setContentsMargins(15, 0, 15, 0)
+        save_btn_layout.addWidget(save_settings_btn)
+        settings_layout.addWidget(save_btn_container)
 
 
         self.tab_widget.addTab(builder_widget, "BUILDER")
@@ -1460,6 +1563,67 @@ class RABIDSGUI(QMainWindow):
         self.build_thread.log_signal.connect(self.log_message)
         self.build_thread.finished_signal.connect(self.build_finished)
         self.build_thread.start()
+
+    def run_dependency_installer(self, commands):
+        self.tab_widget.setCurrentIndex(self.tab_widget.indexOf(self.tab_widget.findChild(QWidget, "OUTPUT")))
+        self.output_log.clear()
+        self.log_message("Starting dependency installation...", "system")
+
+        for btn in self.installer_buttons:
+            btn.setEnabled(False)
+
+        self.installer_thread = DependencyInstallerThread(commands)
+        self.installer_thread.log_signal.connect(self.log_message)
+        self.installer_thread.finished_signal.connect(self.on_installer_finished)
+        self.installer_thread.start()
+
+    def install_nim_tool(self):
+        if sys.platform == "win32":
+            from PyQt5.QtGui import QDesktopServices
+            QDesktopServices.openUrl(QUrl("https://nim-lang.org/install_windows.html"))
+            self.log_message("Opened browser to Nim installation page for Windows. Please download and run the installer.", "system")
+        else:
+            cmd = "curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y"
+            self.run_dependency_installer([cmd])
+
+    def install_rust_tool(self):
+        if sys.platform == "win32":
+            from PyQt5.QtGui import QDesktopServices
+            QDesktopServices.openUrl(QUrl("https://www.rust-lang.org/tools/install"))
+            self.log_message("Opened browser to Rust installation page for Windows. Please download and run rustup-init.exe.", "system")
+        else:
+            cmd = "curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+            self.run_dependency_installer([cmd])
+
+    def on_installer_finished(self):
+        self.log_message("Dependency installation process finished.", "success")
+        for btn in self.installer_buttons:
+            btn.setEnabled(True)
+
+    def run_python_installer(self):
+        commands = [
+            (sys.executable, "-m", "pip", "install", "--break-system-packages", "PyQt5", "discord"),
+        ]
+        self.run_dependency_installer(commands)
+
+    def run_nim_installer(self):
+        commands = [
+            ("nimble", "install", "winim", "openssl", "discord", "nimcrypto", "clipb"),
+        ]
+        self.run_dependency_installer(commands)
+
+    def run_rust_installer(self):
+        commands = [
+            ("rustup", "target", "add", "x86_64-pc-windows-gnu"),
+            ("rustup", "target", "add", "aarch64-pc-windows-gnu"),
+        ]
+        self.run_dependency_installer(commands)
+
+    def run_docker_installer(self):
+        commands = [
+            ("docker", "pull", "ghcr.io/joaovarelas/obfuscator-llvm-16.0:latest")
+        ]
+        self.run_dependency_installer(commands)
 
     def toggle_c2_connection(self):
         if self.c2_thread and self.c2_thread.isRunning():
