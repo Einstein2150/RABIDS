@@ -161,8 +161,6 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None) -> (Path, list):
         with open(f, "r", encoding="utf-8") as fh:
             content = fh.read()
 
-        content, _ = apply_options_with_regex(content, all_options) 
-
         lines = content.splitlines()
         module_body = []
         in_main_proc = False
@@ -200,6 +198,9 @@ def merge_nim_modules(nim_files, out_dir: Path, options=None) -> (Path, list):
     final_content_parts.append("\n\n")
     final_content_parts.append("\n\n".join(module_bodies))
     final_content_parts.append("\n\n")
+
+    final_content_parts[2], _ = apply_options_with_regex(final_content_parts[2], all_options)
+
     final_content_parts.append("proc main() =\n")
 
     for main_content in main_contents:
@@ -343,19 +344,13 @@ memexec = {{ git = "https://github.com/DmitrijVC/memexec", version = "0.3" }}
             ("macos", "arm64"): "aarch64-apple-darwin"
         }[(target_os, target_arch)]
 
-        cargo_cmd = [
-            "cargo", "build", "--release", "--target", rust_target
-        ]
-
         if obfuscate:
+            cargo_cmd = ["cargo", "rustc", "--release", "--target", rust_target, "--"]
+            if ollvm:
+                cargo_cmd.append(f"-Cllvm-args={ollvm}")
+
             project_path = str(project_dir)
             volume_mapping = f"{project_path}:/projects"
-
-            if ollvm:
-                for pass_name in ollvm:
-                    cargo_cmd.append(f"-Cllvm-args=-enable-{pass_name}")
-            else:
-                cargo_cmd.append("-Cllvm-args=-enable-allobf")
 
             docker_cmd = [
                 "docker", "run", "--rm",
@@ -364,6 +359,7 @@ memexec = {{ git = "https://github.com/DmitrijVC/memexec", version = "0.3" }}
                 "ghcr.io/joaovarelas/obfuscator-llvm-16.0:latest",
                 *cargo_cmd
             ]
+
             print(f"[*] Running Dockerized cargo rustc command: {' '.join(docker_cmd)}")
             try:
                 subprocess.run(docker_cmd, check=True, capture_output=True, text=True)
@@ -373,6 +369,10 @@ memexec = {{ git = "https://github.com/DmitrijVC/memexec", version = "0.3" }}
                 print(f"Stderr: {e.stderr}")
                 sys.exit(1)
         else:
+            cargo_cmd = [
+                "cargo", "build", "--release", "--target", rust_target
+            ]
+
             print(f"[*] Running local cargo rustc command: {' '.join(cargo_cmd)}")
             try:
                 subprocess.run(cargo_cmd, check=True, cwd=project_dir, capture_output=True, text=True)
@@ -397,11 +397,11 @@ def main():
     parser = argparse.ArgumentParser(description="Nim-to-EXE Builder")
     parser.add_argument("--nim_file", type=str, help="Path to a single Nim file")
     parser.add_argument("--merge", nargs="+", help="List of Nim modules to embed")
-    parser.add_argument("--output_exe", type=str, required=True, help="Output executable name")
+    parser.add_argument("--output_exe", type=str, required=True, help="Output executable name") 
     parser.add_argument("--embed", type=str, help="Path to additional exe to embed & run")
     parser.add_argument("--nim-only", action="store_true", help="Only build Nim exe (no Rust)")
     parser.add_argument("--obfuscate", action="store_true", help="Enable Rust OLLVM obfuscation")
-    parser.add_argument("--ollvm", nargs="*", help="OLLVM passes: bcfobf subobf constenc ...")
+    parser.add_argument("--ollvm", type=str, help="A string of OLLVM passes, e.g., '-enable-bcfobf -enable-subobf'")
     parser.add_argument("--hide-console", action="store_true", help="Hide console window on Windows")
     parser.add_argument("--target", type=str, default="windows:amd64", help="Target triple (os:arch)")
     parser.add_argument("--option", action="append", help="Option to inject as const (e.g., key=value)")
@@ -456,6 +456,19 @@ def main():
                         dll_content = dll_path.read_bytes()
                         b64_content = base64.b64encode(dll_content).decode('utf-8')
                         nim_options.append(f"{const_name}={b64_content}")
+    
+    if 'MODULE/byovf.nim' in selected_module_paths and not args.nim_only and target_os == 'windows':
+        embed_files_opt = next((opt for opt in nim_options if opt.startswith('embedFiles=')), None)
+        if embed_files_opt:
+            file_paths_str = embed_files_opt.split('=', 1)[1]
+            for file_path_str in file_paths_str.split(','):
+                expanded_path_str = os.path.expandvars(file_path_str.strip())
+                file_path = Path(expanded_path_str).expanduser()
+                if file_path.exists():
+                    print(f"[*] Queuing {file_path.name} for Rust wrapper embedding from byovf.")
+                    embedded_files_for_rust[file_path.name] = file_path.read_bytes()
+                else:
+                    print(f"[Warning] File to embed not found: {file_path}")
 
     final_exe_path_str = args.output_exe
     if target_os == "windows" and not final_exe_path_str.lower().endswith(".exe"):
@@ -470,8 +483,15 @@ def main():
         nim_defines = []
         if args.merge:
             launcher_source, nim_defines = merge_nim_modules(args.merge, tmp_dir, options=nim_options)
-        else:
-            launcher_source = Path(args.nim_file)
+        elif args.nim_file:
+            nim_file_to_compile = args.nim_file
+            if 'byovf' in args.nim_file and args.option:
+                nim_file_opt = next((opt for opt in args.option if opt.startswith('nimFile=')), None)
+                if nim_file_opt:
+                    nim_file_path_str = nim_file_opt.split('=', 1)[1].strip()
+                    expanded_path_str = os.path.expandvars(nim_file_path_str)
+                    nim_file_to_compile = str(Path(expanded_path_str).expanduser())
+            launcher_source = Path(nim_file_to_compile).expanduser()
             nim_defines = patch_nim_file(launcher_source, nim_options)
 
         suffix = ".exe" if target_os == "windows" else ""

