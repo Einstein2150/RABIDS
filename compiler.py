@@ -495,7 +495,6 @@ def main():
     final_exe.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Special handling for bankruptsys: pre-compile xfs.exe
         bankruptsys_path_str = 'MODULE/bankruptsys.nim'
         if bankruptsys_path_str in selected_module_paths and not args.nim_only and target_os == 'windows':
             print("[*] Pre-compiling xfs.exe for bankruptsys module.")
